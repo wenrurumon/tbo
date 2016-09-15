@@ -181,7 +181,11 @@ mixclust <- function(x.g,thres=0,w=TRUE,thres_score=NULL,layer=Inf){
   #Loop fclust till converge or subscore lt thres_score
   li <- 1
   while(li<layer){
-    if(float_thres){thres_score <- max(median(x.score),1)}
+    if(float_thres){
+      if(mean(x.score==.9)==1) {thres_score <- .9} else{
+        thres_score <- median(x.score[x.score>.9])
+      }
+    }
     x.run <- (x.score>=thres_score)
     x.run_sub <- do.call(c,lapply(x.sub[x.run],function(x){
       subnetwork(x,fc(x))
@@ -193,6 +197,7 @@ mixclust <- function(x.g,thres=0,w=TRUE,thres_score=NULL,layer=Inf){
     x.score <- clustscore(x.g,x.clust)
     x.score[is.na(x.score)] <- .9
     print(paste('#loops',li,'#subs',length(x.score)))
+    plotclust(x.g,x.clust)
     if(length(x.run)==length(x.score)){break}
     li <- li+1
   }
