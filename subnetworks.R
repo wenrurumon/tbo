@@ -30,8 +30,10 @@ apply_fcclust <- function(x.gs,w=TRUE){
       return(fcclust(x,w)$cluster)
     }
   })
-  for(i in 2:length(rlt)){
-    rlt[[i]] <- max(rlt[[i-1]])+rlt[[i]]
+  if (length(rlt)>1){
+    for(i in 2:length(rlt)){
+      rlt[[i]] <- max(rlt[[i-1]])+rlt[[i]]
+    }
   }
   rlt <- do.call(c,rlt)
   cluster=rlt[order(as.numeric(names(rlt)))]
