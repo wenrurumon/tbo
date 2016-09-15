@@ -3,6 +3,8 @@
 # Macro
 ################################################
 
+rm(list=ls())
+
 library(kernlab)
 library(igraph)
 library(KRLS)
@@ -197,7 +199,6 @@ mixclust <- function(x.g,thres=0,w=TRUE,thres_score=NULL,layer=Inf){
     x.score <- clustscore(x.g,x.clust)
     x.score[is.na(x.score)] <- .9
     print(paste('#loops',li,'#subs',length(x.score)))
-    plotclust(x.g,x.clust)
     if(length(x.run)==length(x.score)){break}
     li <- li+1
   }
@@ -219,8 +220,8 @@ fc <- function(x){
 }
 clustscore <- function(x,x.clust){
   sapply(unique(x.clust),function(g){
-    xin <- (x[which(x.clust==g),which(x.clust==g)])
-    xout <- (x[which(x.clust==g),which(x.clust!=g)])
+    xin <- (x[which(x.clust==g),which(x.clust==g),drop=F])
+    xout <- (x[which(x.clust==g),which(x.clust!=g),drop=F])
     w_in <- sum(xin)/2#inloop weight
     c_in <- ncol(xin)#inloop count
     w_out <- sum(xout)#outloop weight
