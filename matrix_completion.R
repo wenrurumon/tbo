@@ -7,8 +7,8 @@
 ################################################
 
 #PCA
-pca <- function(X){
-  X <- scale(as.matrix(X))
+pca <- function(X,ifscale=T){
+  if(ifscale) {X <- scale(as.matrix(X))}
   m = nrow(X)
   n = ncol(X)
   X = scale(X)
