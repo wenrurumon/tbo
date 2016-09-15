@@ -184,11 +184,15 @@ mixclust <- function(x.g,thres=0,w=TRUE,thres_score=NULL,layer=Inf){
   li <- 1
   while(li<layer){
     if(float_thres){
-      if(mean(x.score==.9)==1) {thres_score <- .9} else{
+      if(mean(x.score==.9)==1) {
+        thres_score <- .9
+      } else{
         thres_score <- median(x.score[x.score>.9])
       }
     }
-    x.run <- (x.score>=thres_score)
+    x.clust_table <- table(x.clust)
+    x.clust_table <- median(x.clust_table[x.clust_table>1+li])
+    x.run <- (x.score>=thres_score)&(table(x.clust)>x.clust_table)
     x.run_sub <- do.call(c,lapply(x.sub[x.run],function(x){
       subnetwork(x,fc(x))
     }))
