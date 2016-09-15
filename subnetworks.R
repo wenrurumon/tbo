@@ -155,3 +155,73 @@ checknets <- function(i,j,x.clust,w=T){
   xij <- x[seli,selj]
   c(sum(xij),sum(xij>0))
 }
+#Validation
+clust_score <- function(x,x.clust){
+  xbase <- sum(x)/sum(colSums(x)>0)
+  sapply(unique(x.clust),function(g){
+    xin <- (x[which(x.clust==g),which(x.clust==g)])
+    xout <- (x[which(x.clust==g),which(x.clust!=g)])
+    w_in <- sum(xin)/2#inloop weight
+    c_in <- ncol(xin)#inloop count
+    w_out <- sum(xout)#outloop weight
+    c_out <- sum(colSums(xout)>0)#outloop weight
+    (w_in/c_in)/(w_out/c_out)
+  })/xbase
+}
+
+#Mix clustering
+mixclust <- function(x.g,thres=0,w=TRUE,thres_score=0){
+  dimnames(x.g) <- list(1:nrow(x.g),1:ncol(x.g))
+  float_thres <- is.null(thres_score)
+  #Cutnet in the first stage
+  x.clust <- cutnet(x.g,thres,w)$cluster
+  x.sub <- subnetwork(x.g,x.clust)
+  x.score <- clustscore(x.g,x.clust)
+  x.score[is.na(x.score)] <- 1
+  #Loop fclust till converge or subscore lt thres_score
+  while(TRUE){
+    if(float_thres){thres_score <- median(x.score)}
+    x.run <- (x.score>=thres_score)
+    x.run_sub <- do.call(c,lapply(x.sub[x.run],function(x){
+      subnetwork(x,fc(x))
+    }))
+    x.sub <- c(x.run_sub,x.sub[!x.run])
+    x.clust <- rep(1:length(x.sub),sapply(x.sub,ncol))
+      names(x.clust) <- do.call(c,lapply(x.sub,colnames))
+      x.clust <- x.clust[order(as.numeric(names(x.clust)))]
+    x.score <- clustscore(x.g,x.clust)
+    x.score[is.na(x.score)] <- 1
+    if(length(x.run)==length(x.score)){break}
+  }
+  #Summarise Result
+  x.clust <- rep(1:length(x.sub),sapply(x.sub,ncol))
+    names(x.clust) <- do.call(c,lapply(x.sub,colnames))
+    x.clust <- x.clust[order(as.numeric(names(x.clust)))]
+  x.score <- clustscore(x.g,x.clust)
+  subnets <- subnetwork(x.g,x.clust)
+  rlt <- list(subnets=subnets,cluster=x.clust,score=x.score)
+  return(rlt)
+}
+fc <- function(x){
+  w<-as.vector(t(x))[t(x)>0]
+  x <- graph_from_adjacency_matrix(x>0,mode='undirected')
+  fc <- membership(fastgreedy.community(x,weight=w))
+  fc[] <- match(fc,unique(fc))
+  fc
+}
+clustscore <- function(x,x.clust){
+  sapply(unique(x.clust),function(g){
+    xin <- (x[which(x.clust==g),which(x.clust==g)])
+    xout <- (x[which(x.clust==g),which(x.clust!=g)])
+    w_in <- sum(xin)/2#inloop weight
+    c_in <- ncol(xin)#inloop count
+    w_out <- sum(xout)#outloop weight
+    c_out <- sum(colSums(xout)>0)#outloop weight
+    (w_in/c_in)/(w_out/c_out)
+  })
+}
+subnetwork <- function(x,x.clust){
+  lapply(unique(x.clust),function(i){
+    x[x.clust%in%i,x.clust%in%i,drop=F]
+  })
+}
