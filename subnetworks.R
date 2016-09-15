@@ -170,16 +170,17 @@ clust_score <- function(x,x.clust){
 }
 
 #Mix clustering
-mixclust <- function(x.g,thres=0,w=TRUE,thres_score=0){
+mixclust <- function(x.g,thres=0,w=TRUE,thres_score=NULL,layer=Inf){
   dimnames(x.g) <- list(1:nrow(x.g),1:ncol(x.g))
   float_thres <- is.null(thres_score)
   #Cutnet in the first stage
   x.clust <- cutnet(x.g,thres,w)$cluster
   x.sub <- subnetwork(x.g,x.clust)
   x.score <- clustscore(x.g,x.clust)
-  x.score[is.na(x.score)] <- 1
+  x.score[is.na(x.score)] <- .9
   #Loop fclust till converge or subscore lt thres_score
-  while(TRUE){
+  li <- 1
+  while(li<layer){
     if(float_thres){thres_score <- median(x.score)}
     x.run <- (x.score>=thres_score)
     x.run_sub <- do.call(c,lapply(x.sub[x.run],function(x){
@@ -190,8 +191,10 @@ mixclust <- function(x.g,thres=0,w=TRUE,thres_score=0){
       names(x.clust) <- do.call(c,lapply(x.sub,colnames))
       x.clust <- x.clust[order(as.numeric(names(x.clust)))]
     x.score <- clustscore(x.g,x.clust)
-    x.score[is.na(x.score)] <- 1
+    x.score[is.na(x.score)] <- .9
+    print(paste('#loops',li,'#subs',length(x.score)))
     if(length(x.run)==length(x.score)){break}
+    li <- li+1
   }
   #Summarise Result
   x.clust <- rep(1:length(x.sub),sapply(x.sub,ncol))
