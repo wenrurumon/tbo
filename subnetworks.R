@@ -181,7 +181,7 @@ mixclust <- function(x.g,thres=0,w=TRUE,thres_score=NULL,layer=Inf){
   #Loop fclust till converge or subscore lt thres_score
   li <- 1
   while(li<layer){
-    if(float_thres){thres_score <- median(x.score)}
+    if(float_thres){thres_score <- max(median(x.score),1)}
     x.run <- (x.score>=thres_score)
     x.run_sub <- do.call(c,lapply(x.sub[x.run],function(x){
       subnetwork(x,fc(x))
