@@ -40,8 +40,12 @@ qpca <- function(A,lambda=0,ifscale=TRUE){
   z <- x %*% y
   list(rank=r,X=x,Y=y,Z=x%*%y,prop=prop,info=info)
 }
-scale0 <- function(x){
+scale0 <- function(x,to01=T){
   x <- pnorm(scale(x))
+  if(to01){
+    x <- x-min(x,na.rm=TRUE)
+    x <- x/max(x,na.rm=TRUE)
+  }
   x[is.na(x)] <- 0.5
   x
 }
