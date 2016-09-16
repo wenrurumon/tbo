@@ -62,6 +62,14 @@ fcclusts <- function(x,l=0,thres=0,w=TRUE){
   }
   return(rlt)
 }
+#Quick FastGreedy
+fc <- function(x){
+  w<-as.vector(t(x))[t(x)>0]
+  x <- graph_from_adjacency_matrix(x>0,mode='undirected')
+  fc <- membership(fastgreedy.community(x,weight=w))
+  fc[] <- match(fc,unique(fc))
+  fc
+}
 #Spectral Clustering
 spclust <- function(x,centers){
   rlt <- specc(x,centers)
@@ -125,12 +133,12 @@ cutnet <- function(x,thres=0,w=T){
 plotnet <- function(x,       
                     edge.arrow.size=1,vertex.size=10,vertex.label.cex=1,edge.width= 1){
   plot(graph_from_adjacency_matrix(t(as.matrix(x>0)),
-       mode='undirected'),
+                                   mode='undirected'),
        edge.arrow.size=edge.arrow.size,
        vertex.size=vertex.size,
        vertex.label.cex=vertex.label.cex,
        edge.width=edge.width
-       )
+  )
 }
 plotclust <- function(x,membership=NULL,main=''){
   G <- graph_from_adjacency_matrix(x>0)
@@ -170,71 +178,49 @@ clust_score <- function(x,x.clust){
     (w_in/c_in)/(w_out/c_out)
   })/xbase
 }
-
 #Mix clustering
-mixclust <- function(x.g,thres=0,w=TRUE,thres_score=NULL,layer=Inf){
-  dimnames(x.g) <- list(1:nrow(x.g),1:ncol(x.g))
-  float_thres <- is.null(thres_score)
-  #Cutnet in the first stage
-  x.clust <- cutnet(x.g,thres,w)$cluster
-  x.sub <- subnetwork(x.g,x.clust)
-  x.score <- clustscore(x.g,x.clust)
-  x.score[is.na(x.score)] <- .9
-  #Loop fclust till converge or subscore lt thres_score
+mixclust <- function(x.g,thres=0,w=T,b.rank=2.5,layer=Inf,lambda=0.25){
+  # x.g=x;thres=0;w=T;b.rank=2.5;layer=Inf;lambda=0.25
+  #Setup
+  dimnames(x.g) <- list(1:ncol(x.g),1:ncol(x.g))
+  maxrank <- mat.degree(x.g)
+  if(b.rank==0){b.rank <- maxrank}
+  #cut net in the first stage
+  x.sub <- cutnet(x,thres,w)$subnets
+  x.clust <- rep(1:length(x.sub),sapply(x.sub,ncol))
+  names(x.clust) <- do.call(c,lapply(x.sub,colnames))
+  print(paste('cutnet end at thres = ',thres,', #subnets =',length(x.sub)))
+  #Loop fcclust
   li <- 1
-  while(li<layer){
-    if(float_thres){
-      if(mean(x.score==.9)==1) {
-        thres_score <- .9
-      } else{
-        thres_score <- median(x.score[x.score>.9])
-      }
-    }
-    x.clust_table <- table(x.clust)
-    x.clust_table <- median(x.clust_table[x.clust_table>1+li])
-    x.run <- (x.score>=thres_score)&(table(x.clust)>x.clust_table)
+  while(li < layer){
+    x.sub_d <- sapply(x.sub,mat.degree)  
+    x.run <- (x.sub_d >= min((b.rank+li*lambda),maxrank))
     x.run_sub <- do.call(c,lapply(x.sub[x.run],function(x){
       subnetwork(x,fc(x))
     }))
     x.sub <- c(x.run_sub,x.sub[!x.run])
     x.clust <- rep(1:length(x.sub),sapply(x.sub,ncol))
-      names(x.clust) <- do.call(c,lapply(x.sub,colnames))
-      x.clust <- x.clust[order(as.numeric(names(x.clust)))]
-    x.score <- clustscore(x.g,x.clust)
-    x.score[is.na(x.score)] <- .9
-    print(paste('#loops',li,'#subs',length(x.score)))
-    if(length(x.run)==length(x.score)){break}
-    li <- li+1
-  }
-  #Summarise Result
-  x.clust <- rep(1:length(x.sub),sapply(x.sub,ncol))
     names(x.clust) <- do.call(c,lapply(x.sub,colnames))
     x.clust <- x.clust[order(as.numeric(names(x.clust)))]
-  x.score <- clustscore(x.g,x.clust)
-  subnets <- subnetwork(x.g,x.clust)
-  rlt <- list(subnets=subnets,cluster=x.clust,score=x.score)
+    if(length(x.run)==length(x.sub)){
+      print(paste('prune end at layer at',li,', #subnets =',length(x.sub)))
+      break
+    }
+    print(paste('#loop = ',li,', #subnets =',length(x.sub)))
+    li <- li+1
+  }
+  #Summarise
+  rlt <- list(subnets=x.sub,cluster=x.clust,score=x.sub_d)
   return(rlt)
 }
-fc <- function(x){
-  w<-as.vector(t(x))[t(x)>0]
-  x <- graph_from_adjacency_matrix(x>0,mode='undirected')
-  fc <- membership(fastgreedy.community(x,weight=w))
-  fc[] <- match(fc,unique(fc))
-  fc
-}
-clustscore <- function(x,x.clust){
-  sapply(unique(x.clust),function(g){
-    xin <- (x[which(x.clust==g),which(x.clust==g),drop=F])
-    xout <- (x[which(x.clust==g),which(x.clust!=g),drop=F])
-    w_in <- sum(xin)/2#inloop weight
-    c_in <- ncol(xin)#inloop count
-    w_out <- sum(xout)#outloop weight
-    c_out <- sum(colSums(xout)>0)#outloop weight
-    (w_in/c_in)/(w_out/c_out)
-  })
-}
+#Generate subnetwork
 subnetwork <- function(x,x.clust){
   lapply(unique(x.clust),function(i){
     x[x.clust%in%i,x.clust%in%i,drop=F]
   })
+}
+#Calculate the degree of a matrix
+mat.degree <- function(x){
+  x <- (x+t(x))>0
+  mean(degree(graph_from_adjacency_matrix(x,mode='undirected')))
 }
