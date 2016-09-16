@@ -131,7 +131,14 @@ cutnet <- function(x,thres=0,w=T){
 }
 #Plot
 plotnet <- function(x,       
-                    edge.arrow.size=1,vertex.size=10,vertex.label.cex=1,edge.width= 1){
+                    edge.arrow.size=1,vertex.size=10,vertex.label.cex=1,edge.width= 1,
+                    cuts=0){
+  x <- x+t(x)
+  if(cuts>0){
+    for(i in 1:cuts){
+      x <- x[colSums(x>0)>1,colSums(x>0)>1,drop=F]
+    }
+  }
   plot(graph_from_adjacency_matrix(t(as.matrix(x>0)),
                                    mode='undirected'),
        edge.arrow.size=edge.arrow.size,
@@ -179,14 +186,15 @@ clust_score <- function(x,x.clust){
   })/xbase
 }
 #Mix clustering
-mixclust <- function(x.g,thres=0,w=T,b.rank=2.5,layer=Inf,lambda=0.25){
-  # x.g=x;thres=0;w=T;b.rank=2.5;layer=Inf;lambda=0.25
+mixclust <- function(x.g,thres=0,w=T,b.rank=2.5,layer=Inf,lambda=0.25,maxrank=0){
+  # x.g=x.raw;thres=0;w=T;b.rank=2.5;layer=Inf;lambda=0.5;maxrank=3
   #Setup
   dimnames(x.g) <- list(1:ncol(x.g),1:ncol(x.g))
-  maxrank <- mat.degree(x.g)
+  if(maxrank==0){maxrank <- mat.degree(x.g)}
   if(b.rank==0){b.rank <- maxrank}
   #cut net in the first stage
-  x.sub <- cutnet(x,thres,w)$subnets
+  x.cutnet <- cutnet(x,thres,w)
+  x.sub <- subnetwork(x.g,x.cutnet$cluster)
   x.clust <- rep(1:length(x.sub),sapply(x.sub,ncol))
   names(x.clust) <- do.call(c,lapply(x.sub,colnames))
   print(paste('cutnet end at thres = ',thres,', #subnets =',length(x.sub)))
