@@ -185,6 +185,11 @@ clust_score <- function(x,x.clust){
     (w_in/c_in)/(w_out/c_out)
   })/xbase
 }
+
+################################################
+# Structural
+################################################
+
 #Mix clustering
 mixclust <- function(x.g,thres=0,w=T,b.rank=2.5,layer=Inf,lambda=0.25,maxrank=0){
   # x.g=x.raw;thres=0;w=T;b.rank=2.5;layer=Inf;lambda=0.5;maxrank=3
@@ -231,4 +236,88 @@ subnetwork <- function(x,x.clust){
 mat.degree <- function(x){
   x <- (x+t(x))>0
   mean(degree(graph_from_adjacency_matrix(x,mode='undirected')))
+}
+#Q of the network
+kv <- function(v,mat,weight=T){
+  if(!weight){
+    mat<-(mat>0)
+  }
+  sum(mat[,v])
+}
+Avw <- function(v,w,mat,weight=T){
+  A<-mat[v,w]
+  if(weight){
+    return(A)
+  }else{
+    return(A>0)
+  }
+}
+Q <- function(mat,mem=NULL,weight=T){
+  if(!weight) {mat<-(mat>0)}
+  m <- sum(mat)
+  q <- 0
+  if(length(mem)!=ncol(mat)){
+    print('Warning: length(mem)!=ncol(mat)), set mem as 1')
+    mem <- rep(1,ncol(mat))
+  }
+  for(v in 1:length(mem)){
+    for(w in 1:length(mem)){
+      q <- q + (Avw(v,w,mat,weight)-kv(v,mat,weight)*kv(w,mat,weight)/m)*(mem[v]==mem[w])
+    }
+  }
+  return(as.numeric(q/m))
+}
+#Cluster with subrun option
+matrank <- function(x,score=T){
+  while(sum(colSums(x>0)<=1)>0){
+    x <- x[colSums(x>0)>1,colSums(x>0)>1,drop=F]
+    if(ncol(x)==0){break}
+  }
+  if(score){
+    x <- sum(x>0)/ncol(x)
+    if(is.na(x)){return(0)}
+  }
+  return(x)
+}
+subrun <- function(x.sub,x.run){
+  x.run_sub <- do.call(c,lapply(x.sub[x.run],function(x){
+    subnetwork(x,fc(x))
+  }))
+  x.sub <- c(x.run_sub,x.sub[!x.run])
+  x.clust <- rep(1:length(x.sub),sapply(x.sub,ncol))
+  names(x.clust) <- do.call(c,lapply(x.sub,colnames))
+  return(list(subnets=x.sub,cluster=x.clust))
+}
+clust1 <- function(x.g,thres.run=2.5,lambda=0.1,layer=Inf){
+  #Setup
+  dimnames(x.g) <- list(1:ncol(x.g),1:ncol(x.g))
+  #First stage
+  x.clust <- fc(x.g)
+  x.sub <- subnetwork(x.g,x.clust)
+  x.score <- sapply(x.sub,matrank)
+  x.run <- (x.score>thres.run)
+  x.len <- length(x.sub)
+  #Loops
+  li <- 1
+  while(li <= layer){
+    li <- li+1
+    thres.run <- thres.run + lambda
+    print(paste(li,thres.run,sum(x.run),length(x.run)))#layer,thres,#run,#subs
+    x.subrun <- subrun(x.sub,x.run)
+    x.sub <- x.subrun$subnets
+    x.clust <- x.subrun$cluster
+    x.score <- sapply(x.sub,matrank)
+    x.run <- (x.score>thres.run)
+    if(length(x.run)==x.len){break}
+    x.len <- length(x.sub)
+  }
+  #Output
+  x.sub <- x.sub[order(-sapply(x.sub,ncol))]
+  x.clust <- rep(1:length(x.sub),sapply(x.sub,ncol))
+  names(x.clust) <- do.call(c,lapply(x.sub,colnames))
+  x.score <- sapply(x.sub,matrank)
+  rlt <- list(
+    subnets=x.sub,cluster=x.clust,score=x.score
+  )
+  return(rlt)
 }
