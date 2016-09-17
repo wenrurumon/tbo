@@ -71,13 +71,50 @@ fc <- function(x){
   fc
 }
 #FC with low weight removed
-qfc <- function(x.g,q=3/4){
+qfc_weight <- function(x.g,q=3/4){
   if(q==0){return(fc(x))}
   dimnames(x.g) <- list(1:ncol(x.g),1:ncol(x.g))
   x.bk <- x.g
   q <- quantile(x.g[x.g>0],q)
   x.g[x.g<q]<-0
-  print(paste('rm',sum(x.g)/sum(x.bk),'weight,',sum(x.g>0)/sum(x.bk>0),'count.'))
+  print(paste('rm',1-sum(x.g)/sum(x.bk),'weight,',1-sum(x.g>0)/sum(x.bk>0),'count.'))
+  x.clust <- fc(x.g)
+  #end node send back
+  x.endnode <- which(table(x.clust)==1)#Figure out those groups with only 1 cell
+  for(endi in x.endnode){
+    # print(endi)
+    (endi.connect <- rowSums(x.bk[,as.numeric(names(x.clust)[x.clust==endi]),drop=F]))#find the connected node of endi
+    (endi.connect_g <- x.clust[endi.connect>0])#find the group of the connected node
+    if(length(unique(endi.connect_g))>1){#If multi group connect, maximum weighting to grouping
+      endi.connect_g <- tapply(endi.connect[endi.connect>0],endi.connect_g,sum)
+      endi.connect_g <- as.numeric(names(which(endi.connect_g==max(endi.connect_g))))
+    } else {
+      endi.connect_g <- unique(endi.connect_g)
+    }
+    if(length(endi.connect_g)==1){
+      x.clust[x.clust==endi] <- endi.connect_g
+    } else {
+      endi.connect_g <- tapply(x.clust[x.clust%in%endi.connect_g],x.clust[x.clust%in%endi.connect_g],length)
+      endi.connect_g <- as.numeric(names(endi.connect_g[endi.connect_g==max(endi.connect_g)]))
+      if(length(endi.connect_g)>1){endi.connect_g <- max(endi.connect_g)}
+      x.clust[x.clust==endi] <- endi.connect_g
+    }
+  }
+  return(as.numeric(x.clust))
+}
+#QFC with method of pagerank
+pr <- function(x.g){
+  x.g <- graph_from_adjacency_matrix(x.g>0,mode='undirected')
+  return(page_rank(x.g)[[1]])
+}
+qfc <- function(x.g,q=3/4){ 
+  if(q==0){return(fc(x))}
+  dimnames(x.g) <- list(1:ncol(x.g),1:ncol(x.g))
+  x.bk <- x.g
+  x.pr <- pr(x.bk)
+  q <- quantile(x.pr,q)
+  x.g[x.pr<q,x.pr<q] <- 0
+  print(paste('rm',1-sum(x.g)/sum(x.bk),'weight,',1-sum(x.g>0)/sum(x.bk>0),'count.'))
   x.clust <- fc(x.g)
   #end node send back
   x.endnode <- which(table(x.clust)==1)#Figure out those groups with only 1 cell
@@ -311,16 +348,16 @@ matrank <- function(x,score=T){
   }
   return(x)
 }
-subrun <- function(x.sub,x.run){
+subrun <- function(x.sub,x.run,q=0){
   x.run_sub <- do.call(c,lapply(x.sub[x.run],function(x){
-    subnetwork(x,fc(x))
+    subnetwork(x,qfc(x,q))
   }))
   x.sub <- c(x.run_sub,x.sub[!x.run])
   x.clust <- rep(1:length(x.sub),sapply(x.sub,ncol))
   names(x.clust) <- do.call(c,lapply(x.sub,colnames))
   return(list(subnets=x.sub,cluster=x.clust))
 }
-clust1 <- function(x.g,thres.run=2.5,lambda=0.1,layer=Inf,q=1/2){
+clust1 <- function(x.g,thres.run=2.5,lambda=0.1,layer=Inf,q=1/2,q2=1/2,maxthres=3){
   #Setup
   li <- 0
   dimnames(x.g) <- list(1:ncol(x.g),1:ncol(x.g))
@@ -334,9 +371,9 @@ clust1 <- function(x.g,thres.run=2.5,lambda=0.1,layer=Inf,q=1/2){
   #Loops
   while(li < layer){
     li <- li+1
-    thres.run <- min(thres.run + lambda,3)
+    thres.run <- min(thres.run + lambda,maxthres)
     print(paste(li,thres.run,sum(x.run),length(x.run)))#layer,thres,#run,#subs
-    x.subrun <- subrun(x.sub,x.run)
+    x.subrun <- subrun(x.sub,x.run,q2)
     x.sub <- x.subrun$subnets
     x.clust <- x.subrun$cluster
     x.score <- sapply(x.sub,matrank)
