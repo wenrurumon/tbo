@@ -83,37 +83,62 @@ plotnet <- function(x,
 }
 
 #####################################
+# Building
+#####################################
+
+clust2 <- function(x.g,thres=3,layer=Inf){
+  # x.g <- x.raw; thres=3; layer=Inf
+  #Setup
+  dimnames(x.g) <- list(1:ncol(x.g),1:ncol(x.g))
+  #First step, Rough clustering for the orignal network
+  x.clust <- rc(x.g)
+  x.sub <- subnetwork(x.g,x.clust)
+  x.score <- sapply(x.sub,matrank)
+  x.dim <- sapply(x.sub,ncol)
+  x.run <- (x.score > thres)|(x.dim > 100)
+  x.len <- length(x.run)
+  #Second Steup, Freddy Clustering for the run cells.
+  li <- 1
+  while(sum(x.run)>0){
+    print(paste(li,sum(x.run),length(x.run)))
+    li <- li+1
+    if(li>layer){break}
+    x.subrun <- subrun(x.sub,x.run)
+    x.sub <- x.subrun$subnets
+    x.clust <- x.subrun$cluster
+    x.score <- sapply(x.sub,matrank)
+    x.dim <- sapply(x.sub,ncol)
+    x.run <- (x.score > thres)|(x.dim > 100)
+    if(length(x.run)==x.len){break}else{x.len <- length(x.run)}
+  }
+  #Summarise
+  x.sub <- x.sub[order(-sapply(x.sub,ncol))]
+  x.clust <- rep(1:length(x.sub),sapply(x.sub,ncol))
+  names(x.clust) <- do.call(c,lapply(x.sub,colnames))
+  x.score <- sapply(x.sub,matrank)
+  x.dim <- sapply(x.sub,ncol)
+  rlt <- list(
+    subnets=x.sub,cluster=x.clust,score=x.score,dim=x.dim
+  )
+  return(rlt)
+}
+  
+#####################################
 # Test
 #####################################
 
-x.g <- x.raw
-thres <- 3
-layer <- Inf
-
-#Setup
-dimnames(x.g) <- list(1:ncol(x.g),1:ncol(x.g))
-
-#First step, Rough clustering for the orignal network
-x.clust <- rc(x.g)
-x.sub <- subnetwork(x.g,x.clust)
-x.score <- sapply(x.sub,matrank)
-x.run <- (x.score > thres)
-x.len <- length(x.run)
-
-#Second Steup, Freddy Clustering for the run cells.
-
-li <- 1
-while(sum(x.run)>0){
-  print(paste(li,sum(x.run),length(x.run)))
-  li <- li+1
-  if(li>layer){break}
-  x.subrun <- subrun(x.sub,x.run)
-  x.sub <- x.subrun$subnets
-  x.clust <- x.subrun$cluster
-  x.score <- sapply(x.sub,matrank)
-  x.run <- (x.score > thres)
-  if(length(x.run)==x.len){break}else{x.len <- length(x.run)}
-}
-  
-  
-
+setwd('C:\\Users\\zhu2\\Documents\\dreamer\\subchallenge1')
+library(data.table)
+library(slam)
+library(igraph)
+d <- 4
+x <- fread(dir()[d])
+v1 <- c(x$V1)+1
+v2 <- c(x$V2)+1
+v3 <- c(x$V3)
+v1 <- c(v1,max(v1,v2))
+v2 <- c(v2,max(v1,v2))
+v3 <- c(v3,0)
+x <- slam::simple_triplet_matrix(v1,v2,v3)
+x <- as.matrix(x)
+x.raw <- x <- x+t(x)
