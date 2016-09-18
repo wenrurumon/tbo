@@ -32,6 +32,26 @@ pc <- function(x){
   }
   return(match(x.fc,unique(x.fc)))
 }
+fc_core <- function(x.g,q=3/4){
+  # x.bk <- x.g <- x.raw; q <- 3/4#
+  x.bk <- x.g
+  dimnames(x.g) <- list(1:ncol(x.g),1:ncol(x.g))
+  x.g[x.g<quantile(x.g[x.g>0],q)] <- 0
+  x.fc <- pc(x.g)
+  x.ends <- unique(x.fc)[table(x.fc)==1]
+  for (endi in x.ends){
+    # print(endi)
+    # endi <- x.ends[1]#
+    endi.connect <- rowSums(x.bk[,which(x.fc==endi),drop=F])
+    endi.connect <- tapply(endi.connect,x.fc,sum)[table(x.fc)>1]
+    endi.connect <- endi.connect[order(-endi.connect)][1]
+    x.fc[x.fc==endi] <- as.numeric(names(endi.connect))
+  }
+  return(x.fc)
+}
+cluster_in_subrun <- function(x.g,q){
+  fc_core(x.g,3/4)
+}
 
 #####################################
 # Supprting Macro
@@ -44,8 +64,10 @@ subnetwork <- function(x,x.clust){
   })
 }
 subrun <- function(x.sub,x.run){
+  # i <- 0
   x.run_sub <- do.call(c,lapply(x.sub[x.run],function(x){
-    subnetwork(x,pc(x))
+    # print(i<<-i+1)
+    subnetwork(x,cluster_in_subrun(x,q))
   }))
   x.sub <- c(x.run_sub,x.sub[!x.run])
   x.clust <- rep(1:length(x.sub),sapply(x.sub,ncol))
@@ -86,8 +108,8 @@ plotnet <- function(x,
 # Building
 #####################################
 
-clust2 <- function(x.g,thres=3,layer=Inf){
-  # x.g <- x.raw; thres=3; layer=Inf
+#clust2 <- function(x.g,thres=3,layer=Inf,q=3/4){
+  x.g <- x.raw; thres=3; layer=Inf; q <- 3/4
   #Setup
   dimnames(x.g) <- list(1:ncol(x.g),1:ncol(x.g))
   #First step, Rough clustering for the orignal network
@@ -121,13 +143,13 @@ clust2 <- function(x.g,thres=3,layer=Inf){
     subnets=x.sub,cluster=x.clust,score=x.score,dim=x.dim
   )
   return(rlt)
-}
+# }
   
 #####################################
 # Test
 #####################################
 
-setwd('C:\\Users\\zhu2\\Documents\\dreamer\\subchallenge1')
+setwd('C:\\Users\\zhu2\\Documents\\dreamer\\subchallenge1\\data')
 library(data.table)
 library(slam)
 library(igraph)
@@ -142,3 +164,5 @@ v3 <- c(v3,0)
 x <- slam::simple_triplet_matrix(v1,v2,v3)
 x <- as.matrix(x)
 x.raw <- x <- x+t(x)
+sum(x.raw>0);dim(x.raw)
+# rlt <- clust2(x.raw)
