@@ -49,10 +49,11 @@ fc_core <- function(x.g,q=3/4){
   }
   return(x.fc)
 }
-fc_core_q <- function(x.g){
+fc_core_q <- function(x.g,lambda=0){
   q <- matrank(x.g)
-  q <- (q/2)/(q/2+1)
-  fc_core(x.g,q)
+  q <- (q/2+lambda)/(q/2+1+lambda)
+  out <- fc_core(x.g,q)
+  out
 }
 
 #####################################
@@ -87,6 +88,10 @@ matrank <- function(x,score=T){
   }
   return(x)
 }
+mat.pagerank <- function(x){
+  G <- graph_from_adjacency_matrix(x,weighted=TRUE)
+  page.rank(G)$vector
+}
 #Plot
 plotnet <- function(x,       
                     edge.arrow.size=.1,vertex.size=3,vertex.label.cex=.1,edge.width= .1,
@@ -110,8 +115,8 @@ plotnet <- function(x,
 # Building
 #####################################
 
-# clust2 <- function(x.g,thres=3,layer=Inf,q=3/4){
-  x.g <- x.raw; thres=3; layer=Inf; q <- 3/4
+clust2 <- function(x.g,thres=3,layer=Inf){
+  # x.g <- x.raw; thres=3; layer=Inf
   #Setup
   dimnames(x.g) <- list(1:ncol(x.g),1:ncol(x.g))
   #First step, Rough clustering for the orignal network
@@ -136,18 +141,33 @@ plotnet <- function(x,
     if(length(x.run)==x.len){break}else{x.len <- length(x.run)}
   }
   x.run <- (x.dim>100)&(x.score>thres)
-  q <- NA
   while(sum(x.run)>0){
     print(paste(li,sum(x.run),length(x.run)))
     li <- li+1
     if(li>layer){break}
+    fun <- function(x){fc_core_q(x,lambda=li)}
     x.subrun <- subrun(x.sub,x.run,fc_core_q)
     x.sub <- x.subrun$subnets
     x.clust <- x.subrun$cluster
     x.score <- sapply(x.sub,matrank)
     x.dim <- sapply(x.sub,ncol)
-    x.run <- (x.dim > 100)
+    x.run <- (x.dim>100)&(x.score>thres)
     if(length(x.run)==x.len){break}else{x.len <- length(x.run)}
+  }
+  x.run <- (x.dim>100)&(x.score>thres)
+  lj <- 0
+  while(sum(x.run)>0){
+    print(paste(li,sum(x.run),length(x.run)))
+    lj <- lj+1
+    li <- li+1
+    if(lj>10){break}
+    fun <- function(x){fc_core_q(x,lambda=lj*2)}
+    x.subrun <- subrun(x.sub,x.run,fc_core_q)
+    x.sub <- x.subrun$subnets
+    x.clust <- x.subrun$cluster
+    x.score <- sapply(x.sub,matrank)
+    x.dim <- sapply(x.sub,ncol)
+    x.run <- (x.dim>100)&(x.score>thres)
   }
   #Summarise
   x.sub <- x.sub[order(-sapply(x.sub,ncol))]
@@ -170,15 +190,47 @@ library(data.table)
 library(slam)
 library(igraph)
 d <- 4
-x <- fread(dir()[d])
-v1 <- c(x$V1)+1
-v2 <- c(x$V2)+1
-v3 <- c(x$V3)
-v1 <- c(v1,max(v1,v2))
-v2 <- c(v2,max(v1,v2))
-v3 <- c(v3,0)
-x <- slam::simple_triplet_matrix(v1,v2,v3)
-x <- as.matrix(x)
-x.raw <- x <- x+t(x)
+getdata <- function(d){
+  x <- fread(dir()[d])
+  v1 <- c(x$V1)+1
+  v2 <- c(x$V2)+1
+  v3 <- c(x$V3)
+  v1 <- c(v1,max(v1,v2))
+  v2 <- c(v2,max(v1,v2))
+  v3 <- c(v3,0)
+  x <- slam::simple_triplet_matrix(v1,v2,v3)
+  x <- as.matrix(x)
+  x.raw <- x <- x+t(x)
+  x.raw
+}
+x.raw <- getdata(4)
 sum(x.raw>0);dim(x.raw)
 # rlt <- clust2(x.raw)
+
+rlt <- lapply(1:6,function(d){
+  print(d)
+  return(clust2(raw[[d]]))
+})
+
+#####################################
+# Output
+######################################
+
+rlti <- rlt[[1]]
+out <- sapply(1:length(rlti$subnets),function(i){
+  subi <- rlti$subnets[[i]]
+  prank <- sort(mat.pagerank(subi),decreasing=TRUE)
+  out <- paste(as.numeric(names(prank[1:min(100,ncol(subi))]))-1,collapse="\t")
+  paste(i,1/(rlti$score[[i]]+1),out,sep='\t')
+})
+for(i in 1:length(rlt)){
+  print(dir()[i])
+  out <- sapply(1:length(rlti$subnets),function(i){
+    subi <- rlti$subnets[[i]]
+    prank <- sort(mat.pagerank(subi),decreasing=TRUE)
+    out <- paste(as.numeric(names(prank[1:min(100,ncol(subi))]))-1,collapse="\t")
+    paste(i,1/(rlti$score[[i]]+1),out,sep='\t')
+  })
+  write(out,file=paste0('rlt\\',dir()[i]))
+}
+  
