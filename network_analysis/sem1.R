@@ -81,7 +81,7 @@ sem_l1 <- function(y,prop,lambda,times=1){
        model=model,model2=model2)
 }
 
-sem_grplasso <- function(y,prop=0.8,lambda=1){
+sem_grplasso <- function(y,prop=0.8,lambda=1,times=1){
   #Setup
   Y <- scale(do.call(cbind,lapply(y,function(x){x$score[,1:which(x$prop>=prop)[1],drop=F]})))[,]
   Y.prop <- do.call(c,lapply(y,function(x){diff(c(0,x$prop[1:which(x$prop>=prop)[1]]))}))
@@ -133,5 +133,5 @@ sem_grplasso <- function(y,prop=0.8,lambda=1){
 # Test
 #####################################################
 
-system.time(test1 <- sem_l1(y=input$y,prop=.8,lambda=.5,times=10))
-system.time(test2 <- sem_grplasso(y=input$y,prop=.8,lambda=1,times=10))
+system.time(test1 <- sem_l1(y=input$y,prop=.8,lambda=.5,times=100))
+system.time(test2 <- sem_grplasso(y=input$y,prop=.8,lambda=1,times=100))
