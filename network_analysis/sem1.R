@@ -25,7 +25,7 @@ sem1 <- function(y,prop,lambda,times=1){
   Y <- scale(do.call(cbind,lapply(y,function(x){x$score[,1:which(x$prop>=prop)[1],drop=F]})))[,]
   Y.prop <- do.call(c,lapply(y,function(x){diff(c(0,x$prop[1:which(x$prop>=prop)[1]]))}))
   Y.group <- rep(1:length(y),sapply(y,function(x){which(x$prop>=prop)[1]}))
-  #building the original network with lasso regression
+  #Lasso Network
   if(times==1){
     adj <- lapply(1:ncol(Y),function(i){
       slimi <- slim(X=Y[,-i],Y=Y[,i],lambda=lambda,method='lasso',verbose=FALSE)
