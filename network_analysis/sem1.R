@@ -34,7 +34,7 @@ sem1 <- function(y,prop,lambda,times=1){
       temp
     })
   } else {
-    adjs <- lapply(1:100,function(i){
+    adjs <- lapply(1:times,function(i){
       Y <- Y[sample(1:nrow(Y),nrow(Y)/2),]
       adj <- do.call(rbind,lapply(1:ncol(Y),function(i){
         slimi <- slim(X=Y[,-i],Y=Y[,i],lambda=lambda,method='lasso',verbose=FALSE)
@@ -50,6 +50,7 @@ sem1 <- function(y,prop,lambda,times=1){
   #Parameter Estimation
   model <- do.call(rbind,lapply(1:length(adj),function(i){
     yi <- Y[,adj[[i]],drop=F]
+    if(length(yi)==0){return(NULL)}
     yi.coef <- ginv(t(yi)%*%yi) %*% t(yi) %*% Y[,i]  
     yi.sigma <- (1/nrow(yi))*sum((Y[,i]-yi%*%yi.coef)^2)
     yi.SIGMA <- yi.sigma * ginv(t(yi)%*%yi)
@@ -74,4 +75,4 @@ sem1 <- function(y,prop,lambda,times=1){
 # Test
 #####################################################
 
-system.time(test1 <- sem1(y=input$y,prop=.8,lambda=.3,times=10))
+system.time(test1 <- sem1(y=input$y,prop=.8,lambda=.5,times=100))
