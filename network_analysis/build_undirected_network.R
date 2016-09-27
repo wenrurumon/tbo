@@ -123,10 +123,14 @@ sem_grplasso <- function(y,prop=0.8,lambda=1,times=1){
     adj <- lapply(1:nrow(adj),function(i){adj[i,]>=0.8})
   }
   #Summarise network
-  adj2 <- sapply(adj,function(x){tapply(x,Y.group,sum)>0})
-  adj2 <- t(sapply(1:nrow(adj2),function(i){tapply(adj2[i,],Y.group,sum)>0}))
+  adj2 <- sapply(1:length(adj),function(i){
+    tapply(ifelse(adj[[i]]!=0,Y.prop,0),Y.group,sum)
+  })
+  adj2 <- t(sapply(1:nrow(adj2),function(i){
+    tapply(adj2[i,] * Y.prop,Y.group,sum)
+  }))
   #Output
-  list(network=do.call(rbind,adj>0)+0,network2 <- adj2+0)
+  list(network=(do.call(rbind,adj)>0),network2=adj2)
 }
 
 #####################################################
