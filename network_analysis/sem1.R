@@ -12,25 +12,41 @@ library(dplyr)
 
 #Input
 y <- input$y
-prop <- 0.5
-lambda <- 0.2
+prop <- 0.8
+lambda <- 0.4
+times <- 10
 
 #####################################################
 # Macro
 #####################################################
 
-sem1 <- function(y,prop,lambda){
+sem1 <- function(y,prop,lambda,times=1){
   #Setup
   Y <- scale(do.call(cbind,lapply(y,function(x){x$score[,1:which(x$prop>=prop)[1],drop=F]})))[,]
   Y.prop <- do.call(c,lapply(y,function(x){diff(c(0,x$prop[1:which(x$prop>=prop)[1]]))}))
   Y.group <- rep(1:length(y),sapply(y,function(x){which(x$prop>=prop)[1]}))
   #building the original network with lasso regression
-  adj <- lapply(1:ncol(Y),function(i){
-    slimi <- slim(X=Y[,-i],Y=Y[,i],lambda=lambda,method='lasso',verbose=FALSE)
-    temp <- rep(FALSE,ncol(Y))
-    temp[which(slimi$beta!=0)] <- TRUE
-    temp
-  })
+  if(times==1){
+    adj <- lapply(1:ncol(Y),function(i){
+      slimi <- slim(X=Y[,-i],Y=Y[,i],lambda=lambda,method='lasso',verbose=FALSE)
+      temp <- rep(FALSE,ncol(Y))
+      temp[which(slimi$beta!=0)] <- TRUE
+      temp
+    })
+  } else {
+    adjs <- lapply(1:100,function(i){
+      Y <- Y[sample(1:nrow(Y),nrow(Y)/2),]
+      adj <- do.call(rbind,lapply(1:ncol(Y),function(i){
+        slimi <- slim(X=Y[,-i],Y=Y[,i],lambda=lambda,method='lasso',verbose=FALSE)
+        temp <- rep(FALSE,ncol(Y))
+        temp[which(slimi$beta!=0)] <- TRUE
+        temp
+      }))
+    })
+    adj <- 0
+    for(i in adjs){adj <- i+adj}
+    adj <- lapply(1:nrow(adj),function(i){adj[i,]>=0.8})
+  }
   #Parameter Estimation
   model <- do.call(rbind,lapply(1:length(adj),function(i){
     yi <- Y[,adj[[i]],drop=F]
@@ -54,3 +70,8 @@ sem1 <- function(y,prop,lambda){
        model=model,model2=model2)
 }
 
+#####################################################
+# Test
+#####################################################
+
+system.time(test1 <- sem1(y=input$y,prop=.8,lambda=.3,times=10))
