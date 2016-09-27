@@ -9,18 +9,28 @@ library(flare)
 library(MASS)
 library(data.table)
 library(dplyr)
+library(grplasso)
 
 #Input
 y <- input$y
 prop <- 0.8
-lambda <- 0.4
-times <- 10
+lambda <- 1
+times <- 1
 
 #####################################################
 # Macro
 #####################################################
 
-sem1 <- function(y,prop,lambda,times=1){
+plotnet <- function(x,mode='undirected'){
+  diag(x) <- 0
+  plot(graph_from_adjacency_matrix(t(x),mode=mode),
+       edge.arrow.size=.1,
+       vertex.size=3,
+       vertex.label.cex=1,
+       edge.width=.1)
+}
+
+sem_l1 <- function(y,prop,lambda,times=1){
   #Setup
   Y <- scale(do.call(cbind,lapply(y,function(x){x$score[,1:which(x$prop>=prop)[1],drop=F]})))[,]
   Y.prop <- do.call(c,lapply(y,function(x){diff(c(0,x$prop[1:which(x$prop>=prop)[1]]))}))
@@ -30,7 +40,7 @@ sem1 <- function(y,prop,lambda,times=1){
     adj <- lapply(1:ncol(Y),function(i){
       slimi <- slim(X=Y[,-i],Y=Y[,i],lambda=lambda,method='lasso',verbose=FALSE)
       temp <- rep(FALSE,ncol(Y))
-      temp[which(slimi$beta!=0)] <- TRUE
+      temp[-i][which(slimi$beta!=0)] <- TRUE
       temp
     })
   } else {
@@ -39,7 +49,7 @@ sem1 <- function(y,prop,lambda,times=1){
       adj <- do.call(rbind,lapply(1:ncol(Y),function(i){
         slimi <- slim(X=Y[,-i],Y=Y[,i],lambda=lambda,method='lasso',verbose=FALSE)
         temp <- rep(FALSE,ncol(Y))
-        temp[which(slimi$beta!=0)] <- TRUE
+        temp[-i][which(slimi$beta!=0)] <- TRUE
         temp
       }))
     })
@@ -71,8 +81,57 @@ sem1 <- function(y,prop,lambda,times=1){
        model=model,model2=model2)
 }
 
+sem_grplasso <- function(y,prop=0.8,lambda=1){
+  #Setup
+  Y <- scale(do.call(cbind,lapply(y,function(x){x$score[,1:which(x$prop>=prop)[1],drop=F]})))[,]
+  Y.prop <- do.call(c,lapply(y,function(x){diff(c(0,x$prop[1:which(x$prop>=prop)[1]]))}))
+  Y.group <- rep(1:length(y),sapply(y,function(x){which(x$prop>=prop)[1]}))
+  #Group Lasso Network
+  if(times==1){
+    adj <- lapply(1:ncol(Y),function(i){
+      lambda <- lambdamax(x=cbind(1,Y[,-i]),y=Y[,i], 
+                          index=c(NA,Y.group[-i]), 
+                          penscale = sqrt, model = LinReg(),
+                          center=TRUE,standardized=TRUE) * 0.5^(1/lambda-1)
+      fit <- grplasso(x=cbind(1,Y[,-i]),y=Y[,i],
+                      index=c(NA,Y.group[-i]),lambda=lambda,model=LinReg(),
+                      penscale = sqrt,
+                      control = grpl.control(update.hess = "lambda", trace = 0))
+      temp <- rep(0,ncol(Y))
+      temp[-i] <- coef(fit)[-1]
+      temp
+    })
+  } else {
+    adjs <- lapply(1:times,function(i){
+      Y <- Y[sample(1:nrow(Y),nrow(Y)/2),]
+      adj <- do.call(rbind,lapply(1:ncol(Y),function(i){
+        lambda <- lambdamax(x=cbind(1,Y[,-i]),y=Y[,i], 
+                            index=c(NA,Y.group[-i]), 
+                            penscale = sqrt, model = LinReg(),
+                            center=TRUE,standardized=TRUE) * 0.5^(1/lambda-1)
+        fit <- grplasso(x=cbind(1,Y[,-i]),y=Y[,i],
+                        index=c(NA,Y.group[-i]),lambda=lambda,model=LinReg(),
+                        penscale = sqrt,
+                        control = grpl.control(update.hess = "lambda", trace = 0))
+        temp <- rep(0,ncol(Y))
+        temp[-i] <- coef(fit)[-1]
+        temp
+      }))
+    })
+    adj <- 0
+    for(i in adjs){adj <- (i!=0)+adj}
+    adj <- lapply(1:nrow(adj),function(i){adj[i,]>=0.8})
+  }
+  #Summarise network
+  adj2 <- sapply(adj,function(x){tapply(x,Y.group,sum)>0})
+  adj2 <- t(sapply(1:nrow(adj2),function(i){tapply(adj2[i,],Y.group,sum)>0}))
+  #Output
+  list(network=do.call(rbind,adj>0)+0,network2 <- adj2+0)
+}
+
 #####################################################
 # Test
 #####################################################
 
-system.time(test1 <- sem1(y=input$y,prop=.8,lambda=.5,times=100))
+system.time(test1 <- sem_l1(y=input$y,prop=.8,lambda=.5,times=10))
+system.time(test2 <- sem_grplasso(y=input$y,prop=.8,lambda=1,times=10))
