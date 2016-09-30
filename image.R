@@ -14,8 +14,8 @@ out <- lapply(raw,function(x){
 })
 for(j in 1:length(out)){
   print(j)
-  for(i in 1:dim(out[[j]])[1]){
-    # print(i)
+  for(i in 1:dim(out[[j]])[3]){
+    print(i)
     out[[j]][,,i] <- image.process(rlt2[[j]][,,i])
   }
 }
