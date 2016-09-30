@@ -66,3 +66,13 @@ for(j in 1:length(out)){
     out[[j]][,,i] <- g.process(rlt2[[j]][,,i])
   }
 }
+
+g.target <- out[[1]]
+system.time(g2 <- niftyreg.linear(source=out[[2]],target=g.target))
+system.time(g3 <- niftyreg.linear(source=out[[3]],target=g.target))
+
+par(mfrow=c(3,4))
+for(i in 1:4){plotg(g.target[,,i*2+120])}
+for(i in 1:4){plotg(g2$image[,,i*2+120])}
+for(i in 1:4){plotg(g3$image[,,i*2+120])}
+par(mfrow=c(2,2));for(i in 1:4){plotg(raw[[3]][,,100+i*2])}
