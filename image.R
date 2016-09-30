@@ -1,34 +1,13 @@
 
 rm(list=ls())
-
 load("C:/Users/zhu2/Documents/Lung_CT_CHINA/rlt2.rda")
-library(oro.nifti)
-library(oro.dicom)
-library(RNiftyReg)
+library(graphics)
 
-raw <- rlt2
+#########################################
+# Macro
+#########################################
 
-#First Stage Feature
-out <- lapply(raw,function(x){
-  array(0,dim=dim(x))
-})
-for(j in 1:length(out)){
-  print(j)
-  for(i in 1:dim(out[[j]])[3]){
-    print(i)
-    out[[j]][,,i] <- image.process(rlt2[[j]][,,i])
-  }
-}
-  
-test2 <- niftyreg.linear(rlt2[[2]],rlt2[[1]])
-test3 <- niftyreg.nonlinear(rlt2[[3]],rlt2[[1]])
-
-#######################
-#Process Image
-
-# g <- test
-# par(mfrow=c(2,2))
-# graphics::image(g,col=grey(0:64/64))
+plotg <- function(g,col=grey(0:64/64)){graphics::image(g,col=col)}
 g.grad <- function(g,block=1){
   out <- matrix(0,nrow(g),ncol(g))
   for(i in (block+1):(ncol(g)-block)){
@@ -36,12 +15,8 @@ g.grad <- function(g,block=1){
       out[i,j] <- max(abs(g[i,j]-g[-block:block+i,-block:block+j]))
     }
   }
-  out
+  return(out)
 }
-# graphics::image(g.grad(g,1),col=grey(0:64/64))
-# g_grad <- g.grad(g,1)
-# graphics::image(out>quantile(out,0.9),col=grey(0:64/64))
-# g_grad_filter <- (out>quantile(out,0.9))
 
 edge.clean <- function(g){
   for(i in 1:ncol(g)){
@@ -69,22 +44,25 @@ edge.clean2 <- function(g,times=1){
   g
 }
 
-# g <- test
-# par(mfrow=c(2,2))
-# graphics::image(g,col=grey(0:64/64))
-# graphics::image(g.grad(g,1),col=grey(0:64/64))
-# graphics::image(edge.clean2(g_grad_filter,2),col=grey(0:64/64))
-# gf <- ifelse(edge.clean2(g_grad_filter,2),g,0)
-# gf[gf==-2000] <- 0
-# graphics::image(gf,col=grey(0:64/64))
-
-#######################
-#
-
-image.process <- function(g){
-  g_grad <- g.grad(g,1)
-  g_grad_filter <- (g_grad>quantile(g_grad,0.9))
-  gf <- ifelse(edge.clean2(g_grad_filter,2),g,0)
-  gf
+g.process <- function(g){
+  g[g==-2000] <- 0
+  g.grad(g)
 }
 
+#########################################
+# Process
+#########################################
+
+raw <- rlt2
+
+#First Stage Feature
+out <- lapply(raw,function(x){
+  array(0,dim=dim(x))
+})
+for(j in 1:length(out)){
+  print(j)
+  for(i in 1:dim(out[[j]])[3]){
+    print(i)
+    out[[j]][,,i] <- g.process(rlt2[[j]][,,i])
+  }
+}
