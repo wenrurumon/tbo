@@ -9,11 +9,17 @@ library(RNiftyReg)
 raw <- rlt2
 
 #First Stage Feature
-for(i in 1:dim(rlt2[[1]])[1]){
-  print(i)
-  rlt2[[1]][,,i] <- image.process(rlt2[[1]][,,i])
+out <- lapply(raw,function(x){
+  array(0,dim=dim(x))
+})
+for(j in 1:length(out)){
+  print(j)
+  for(i in 1:dim(out[[j]])[1]){
+    # print(i)
+    out[[j]][,,i] <- image.process(rlt2[[j]][,,i])
+  }
 }
-
+  
 test2 <- niftyreg.linear(rlt2[[2]],rlt2[[1]])
 test3 <- niftyreg.nonlinear(rlt2[[3]],rlt2[[1]])
 
