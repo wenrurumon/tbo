@@ -27,110 +27,45 @@ g.2group <- function(g,grp=2,value=T){
   g2
 }
 
-edge.clean <- function(g){
-  for(i in 1:ncol(g)){
-    j = which(g[,i])[1]
-    if(is.na(j)){next}
-    while(g[j,i]){
-      g[j,i] <- FALSE
-      j=j+1
-    }
-  }
-  for(i in ncol(g):1){
-    j = which(g[,i])[1]
-    if(is.na(j)){next}
-    while(g[j,i]){
-      g[j,i] <- FALSE
-      j=j+1
-    }
-  }
-  g
-}
-edge.clean2 <- function(g,times=1){
-  for(i in 1:times){
-    g <- edge.clean(g)
-  }
-  g
-}
-
-g.process <- function(g){
-  g[g==-2000] <- 0
-  g.grad(g)
-}
 g.align <- function(source,target){
   temp <- niftyreg.linear(source=source,target=target)
   temp <- niftyreg.nonlinear(source=temp$img,target=target)
   temp
 }
 
+g.process <- function(g){
+  # plotg(g)
+  g <- g.2group(g,value=T)
+  g2 <- g.2group(g,value=F)
+  colsel <- range(which(colMeans(g2)>0.5))
+  rowsel <- range(which(rowMeans(g2)>0.3))
+  # return(c(rowsel,colsel))
+  for(i in 1:512){
+    g[i,1:max(which(g2[i,1:colsel[1]]==0))] <- 0
+    g[i,(colsel[2]-1+min(which(g2[i,colsel[2]:512]==0))):512] <- 0
+  }
+  # plotg(g)
+  # plotg(g[rowsel[1]:rowsel[2],colsel[1]:colsel[2]])
+  return(list(graph=g,window=c(rowsel,colsel)))
+}
+
+gs.process <- function(out){
+  print(1)
+  # out <- rlt2[[1]]
+  system.time(rlt.gprocess <- lapply(1:dim(out)[[3]],function(i){g.process(rlt2[[1]][,,i])}))
+  sel <- sapply(rlt.gprocess,function(x){x$window})
+  sel <- c(apply(sel,1,min)[c(1,3)],apply(sel,1,max)[c(2,4)])
+  out2 <- array(0,dim=c(sel[3]-sel[1]+1,sel[4]-sel[2]+1,dim(out)[[3]]))
+  for(i in 1:dim(out)[3]){out2[,,i] <- rlt.gprocess[[i]]$graph[sel[1]:sel[3],sel[2]:sel[4]]}
+  return(out2)
+}
+
 #########################################
 # Test
 #########################################
-
-par(mfrow=c(2,2))
-
-g <- rlt2[[1]][,,100];plotg(g)
-g2 <- g.2group(g,value=T); plotg(g2)
-g3 <- g.grad(g.2group(g2,value=F)); plotg(g3)
-g4 <- g3[rowSums(g3)>0,colSums(g3)>0];plotg(g4)
-
-#
-
-START <- c(lapply(which(g4[,1]!=0),function(x){c(x,1)}),
-           lapply(which(g4[1,]!=0),function(x){c(1,x)}),
-           lapply(which(g4[,ncol(g4)]!=0),function(x){c(x,ncol(g4))}),
-           lapply(which(g4[nrow(g4),]!=0),function(x){c(nrow(g4),x)}))
-
-go <- function(ij,g=g4){
-  mi=nrow(g)
-  mj=ncol(g)
-  ijs <- rep(list(ij),4)
-  ijs[[1]][1] <- ijs[[1]][1]+1
-  ijs[[2]][1] <- ijs[[2]][1]-1
-  ijs[[3]][2] <- ijs[[3]][2]+1
-  ijs[[4]][2] <- ijs[[4]][2]-1
-  ijs <- ijs[sapply(ijs,function(x){x[1]<=mi & x[1]>0 & x[2] <= mj & x[2] > 0})]
-  ijs[sapply(ijs,function(ij){g[ij[1],ij[2]]==1})]
-}
-
-i <- 0
-found <- c(START)
-foundi <- do.call(c,lapply(found,go))
-while(sum(!foundi%in%found)>0){
-  found <- unique(c(found,foundi))
-  foundi <- do.call(c,lapply(found,go))
-}
-for(ij in found){g4[ij[1],ij[2]]<-0}
-
-plotg(g.grad(g2))
-g5 <- g.grad(g2)
-for(ij in found){g5[rowSums(g3)>0,colSums(g3)>0][ij[1],ij[2]]<-0}
-plotg(g5)
 
 #########################################
 # Process
 #########################################
 
-raw <- rlt2
-
-#First Stage Feature
-out <- lapply(raw,function(x){
-  array(0,dim=dim(x))
-})
-for(j in 1:length(out)){
-  print(j)
-  for(i in 1:dim(out[[j]])[3]){
-    print(i)
-    out[[j]][,,i] <- g.process(rlt2[[j]][,,i])
-  }
-}
-
-g.target <- out[[1]]
-system.time(g2 <- g.align(source=out[[2]],target=g.target))
-system.time(g3 <- g.align(source=out[[3]],target=g.target))
-
-par(mfrow=c(3,4))
-for(i in 1:4){plotg(g.target[,,i*2+120])}
-for(i in 1:4){plotg(g2$image[,,i*2+120])}
-for(i in 1:4){plotg(g3$image[,,i*2+120])}
-par(mfrow=c(2,2));for(i in 1:4){plotg(raw[[3]][,,100+i*2])}
+system.time(test <- lapply(rlt2,gs.process))
