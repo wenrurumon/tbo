@@ -81,10 +81,11 @@ g.2group <- function(g,grp=2,value=T){
   g2/max(g)
 }
 
-g.align <- function(source,target){
-  temp <- niftyreg.linear(source=source,target=target)
-  temp <- niftyreg.nonlinear(source=temp$img,target=target)
-  temp
+g.reg <- function(g.source,g.target){
+  reg1 <- niftyreg(g.source,g.target,scope='rigid')
+  reg2 <- applyTransform(forward(reg1),g.source)
+  reg3 <- niftyreg(reg2,g.target,scope='affine')
+  list(reg3)
 }
 
 g.process <- function(g){
@@ -140,9 +141,4 @@ kicksec <- function(gs){
 g.sources <- lapply(raw[1:3],gs.process)
 g.target <- gs.process(raw[[10]])
 
-g.reg <- function(g.source,g.target){
-  reg1 <- niftyreg(g.source,g.target,scope='rigid')
-  reg2 <- applyTransform(forward(reg1),g.source)
-  reg3 <- niftyreg(reg2,g.target,scope='affine')
-  list(reg3)
-}
+
