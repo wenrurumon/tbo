@@ -137,10 +137,12 @@ kicksec <- function(gs){
 #Reg
 ##################
 
-g.source <- gs.process(raw[[1]])
+g.sources <- lapply(raw[1:3],gs.process)
 g.target <- gs.process(raw[[10]])
-system.time(reg1 <- niftyreg(g.source,g.target,scope='rigid'))
-system.time(reg2 <- applyTransform(forward(reg1),g.source))
-system.time(reg3 <- niftyreg(reg2,g.target,scope='affine'))
-plotgs(reg3$image,d=2,is=1:9 * 10+150)
 
+g.reg <- function(g.source,g.target){
+  reg1 <- niftyreg(g.source,g.target,scope='rigid')
+  reg2 <- applyTransform(forward(reg1),g.source)
+  reg3 <- niftyreg(reg2,g.target,scope='affine')
+  list(reg3)
+}
