@@ -20,15 +20,10 @@ pca <- function(X,ifscale=T){
   list(score=score,prop=value,mat=mat)
 }
 #quadratically regularized PCA
-qpca <- function(A,lambda=0,ifscale=TRUE){
-  if(ifscale){
-    A <- scale(as.matrix(A))
-    A[is.na(A)] <- 0
-  }else{
-    A <- as.matrix(A)
-  }
+qpca <- function(A,rank=ncol(A),ifscale=TRUE){
+  if(ifscale){A <- scale(as.matrix(A))[,]}
   A.svd <- svd(A)
-  d <- A.svd$d-lambda*A.svd$d[1]
+  d <- A.svd$d-A.svd$d[min(rank+1,ncol(A))]
   d <- d[d > 1e-8]
   r <- length(d)
   prop <- d^2; info <- sum(prop)/sum(A.svd$d^2);prop <- cumsum(prop/sum(prop))
@@ -38,7 +33,8 @@ qpca <- function(A,lambda=0,ifscale=TRUE){
   x <- u%*%sqrt(d)
   y <- sqrt(d)%*%t(v)
   z <- x %*% y
-  list(rank=r,X=x,Y=y,Z=x%*%y,prop=prop,info=info)
+  rlt <- list(rank=r,X=x,Y=y,Z=x%*%y,prop=prop,info=info)
+  return(rlt)
 }
 scale0 <- function(x,to01=T){
   x <- pnorm(scale(x))
