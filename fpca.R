@@ -1,6 +1,12 @@
+rm(list=ls())
+
 library(fda)
 library(MASS)
+library(GenABEL)
+
+ivn <- function(x){sapply(1:ncol(x),function(i) rntransform(x[,i]))}
 fpca <- function(x,pos,nbasis=37){
+	pos <- (pos-min(pos))/(max(pos)-min(pos))
 	if(length(pos)<=3){
 			return(list(scores=x,prop=rep(1,length(pos))))
 		}else{
@@ -14,8 +20,8 @@ fpca <- function(x,pos,nbasis=37){
 	    	return(list(scores=scores,prop=prop))
    		}
 }
-qpca <- function(A,rank=0,ifscale=TRUE){
-  if(ifscale){A <- scale(as.matrix(A))[,]}
+qpca <- function(A,rank=0){
+  A <- ivn(A)
   A.svd <- svd(A)
   if(rank==0){
     d <- A.svd$d
@@ -51,3 +57,19 @@ qfpca <- function(x,pos){
 	}
 	return(list(fpca=score.fpca,qfpca=score.qfpca))
 }
+
+load('/home/zhu/qtl/rawdata/gene39761.rda')
+pid <- rownames(mcinpath[[1]][[1]])
+setwd('/home/zhu/qtl/rawdata/methylation_raw')
+temp2 <- lapply(1:22,function(chr){
+	load(paste0('methydata_chr',chr,'.rda'))	
+	print(chr)
+	i <- 0
+	temp <- lapply(methyii,function(x){
+		print(i<<-i+1)
+		x1 <- list(gene=x$gene[match(pid,rownames(x$gene)),,drop=F],pos=x$pos)
+		x2 <- qfpca(x1$gene,x1$pos)
+		return(c(x1,x2))
+	})
+	return(temp)
+})
