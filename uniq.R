@@ -1,5 +1,6 @@
 # setwd('C:\\\\Users\\\\admin\\\\Documents\\\\mindshare\\\\uniq\\\\data')
-setwd('C:\\Users\\WenluluSens\\Documents\\Project\\mindshare\\Uniqlo')
+# setwd('C:\\Users\\WenluluSens\\Documents\\Project\\mindshare\\Uniqlo')
+setwd('C:\\Users\\zhu2\\Documents\\mindshare\\uniq')
 
 library(sqldf)
 library(data.table)
@@ -32,11 +33,14 @@ checksales <- function(){
 #
 unique(sales$cate)
 m <- select(filter(sales,cate=='core_down'),-yr_ssn,-cate)
-m <- mutate(m,pris=Amnt/Qty)
+m <- mutate(m,pris=Amnt/Qty,discount=ifelse(Disc_Ratio>=0.05))
 m <- filter(m,Qty>0)
 
 x.lm <- lm(Amnt~-1
-             +paste(city)+paste(substr(week,5,6))
-             +pris+Disc
+           +paste(city)+paste(substr(week,5,6))
+           +pris+Disc
+           +EC_Disc
            ,data=m)
 summary(x.lm)
+cor(tapply(m$Amnt,m$week,sum),tapply(predict(x.lm),m$week,sum))
+plot.ts(as.numeric(tapply(m$Amnt,m$week,sum))); lines(tapply(predict(x.lm),m$week,sum),col=2)
