@@ -1,6 +1,6 @@
 # setwd('C:\\\\Users\\\\admin\\\\Documents\\\\mindshare\\\\uniq\\\\data')
-# setwd('C:\\Users\\WenluluSens\\Documents\\Project\\mindshare\\Uniqlo')
-setwd('C:\\Users\\zhu2\\Documents\\mindshare\\uniq')
+setwd('C:\\Users\\WenluluSens\\Documents\\Project\\mindshare\\Uniqlo')
+# setwd('C:\\Users\\zhu2\\Documents\\mindshare\\uniq')
 
 library(sqldf)
 library(data.table)
@@ -18,7 +18,7 @@ sales$week <- sapply(strsplit(sales$week,"/"),function(x){as.numeric(x[1])*10000
 sales <- select(arrange(sales,yr_ssn, cate, city, week),-WK)
 
 code <- paste0(sales$yr_ssn,sales$cate,sales$city)
-retention <- function(x,rate=0.75){
+retention <- function(x,rate=0.75,code=code){
   for(i in 2:length(x)){
     if(code[i]==code[i-1]){
       x[i] <- x[i-1]*rate + x[i]
@@ -31,16 +31,24 @@ checksales <- function(){
 }
 
 #
-unique(sales$cate)
-m <- select(filter(sales,cate=='core_down'),-yr_ssn,-cate)
-m <- mutate(m,pris=Amnt/Qty,discount=ifelse(Disc_Ratio>=0.05))
-m <- filter(m,Qty>0)
+unique(sales$cate) 
+m <- select(filter(sales,cate==unique(sales$cate)[2]),-yr_ssn,-cate)
+m <- mutate(m,pris=Amnt/Qty,Disc=ifelse(Disc<0,0,Disc),Disc_ratio=Disc/(Disc+Amnt),
+            pr=retention(FRCN_DE_imp_pr+FRCN_SOLW_imp_pr+jogger_imp_pr+
+                           kaws_imp_pr+shanghai_lemaire_imp_pr+shanghai_magic_imp_pr+
+                           shanghai_reopen_imp_pr+victoria_imp_pr,
+                         rate=0.75,code=paste0(m$week,m$city)),
+            storecount=LFL_countStr+new_countStr+others_countStr
+)
+m <- filter(m,Qty>0&Amnt>0)
 
-x.lm <- lm(Amnt~-1
-           +paste(city)+paste(substr(week,5,6))
-           +pris+Disc
-           +EC_Disc
+x.lm <- lm(Qty~-1
+           +paste(city)+paste(substr(week,5,6))+storecount+avg_temp
+           # +pris
+           +Disc_ratio
+           +pr
+           +ooh_branding+ooh_flannel
            ,data=m)
 summary(x.lm)
 cor(tapply(m$Amnt,m$week,sum),tapply(predict(x.lm),m$week,sum))
-plot.ts(as.numeric(tapply(m$Amnt,m$week,sum))); lines(tapply(predict(x.lm),m$week,sum),col=2)
+plot.ts(as.numeric(tapply(m$Qty,m$week,sum))); lines(tapply(predict(x.lm),m$week,sum),col=2)
