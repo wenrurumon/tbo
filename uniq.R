@@ -14,7 +14,9 @@ library(dplyr)
 
 rm(list=ls())
 load('data.Rdata')
-# 
+
+# trans2 <- data.frame(sales %>% group_by(city) %>% summarise(mean(trans)))
+# sales <- data.frame(sales,hh=trans2[match(sales$city,trans2[,1]),2])
 # trans <- read.table('clipboard',header=T)
 # trans <- as.data.frame(trans %>%　group_by(CoreCity,WK) %>% summarise(trans=sum(Trans)))
 # sales <- cbind(sales,trans=as.numeric(trans[match(paste(sales$city,sales$WK),paste(trans$CoreCity,trans$WK)),3]))
