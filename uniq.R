@@ -33,12 +33,32 @@ retention <- function(x,rate=0.75,code=code){
   }
   return(x)
 }
+getdummy <- function(x){
+  rlt <- outer(x,unique(x),'==')+0
+  colnames(rlt) <- unique(x)
+  return(rlt)
+}
+model <- function(beta,Y,X,betacons){
+  # beta <- ifelse(is.na(x.coef),0,x.coef)
+  # Y <- x.data[,1]
+  # X <- x.data[,-1]
+  # betacons <- c(rep(0,38),rep(1,8))
+  beta1 <- ifelse(betacons*beta<0,0,beta)
+  
+  beta2 <- optim(beta1,function(b){
+    b <- ifelse(b * betacons<0, -b, b)
+    sum((Y-b%*%t(X))^2)
+  })
+  beta2 <-  ifelse(beta2[[1]] * betacons<0, -beta2[[1]], beta2[[1]])
+  beta2
+}
 
 #
 unique(sales$cate) 
 # model_cate <- function(cate){
-  (cate <- paste(unique(sales$cate))[1])
+  (cate <- paste(unique(sales$cate))[2])
   m <- mutate(filter(sales[sales$cate==cate,]),
+              aphh=Amnt/hh,qphh=Qty/hh,
               Amnt=ifelse(Amnt<0,0,Amnt),Qty=ifelse(Qty<0,0,Qty),Disc=ifelse(Disc<0,0,Disc),
               Disc_Ratio=ifelse(Amnt+Disc<=0,0,Disc/(Amnt+Disc)))
   m.code <- paste0(m$week,m$city)
@@ -107,21 +127,17 @@ unique(sales$cate)
               ),
               storecount=LFL_countStr+new_countStr+others_countStr
   )
-  x.lm <- lm(Qty~-1
-             +paste(city)+paste(substr(week,5,6))+storecount+avg_temp
-             # +pris
-             +trans
-             +Disc_Ratio
-             +pr.ret+ooh.ret+magazine.ret+tv.ret+otv.ret+search.ret
-             ,data=m)
+  x.data <- as.matrix(cbind(y=m$qphh,
+    getdummy(paste(m$city)),getdummy(substr(m$week,5,6)),
+    select(m,storecount,Disc_Ratio,pr.ret,ooh.ret,magazine.ret,tv.ret,otv.ret,search.ret)
+  ))
+  x.lm <- lm(y~-1+.,data=as.data.frame(x.data))
+  x.coef <- coef(x.lm)
+  coef2 <- model(beta=ifelse(is.na(x.coef),0,x.coef),Y=x.data[,1],X=x.data[,-1],betacons=c(rep(0,38),rep(1,8)))
+  pred <- x.data[,-1] %*% coef2 * m$hh
+  plot.ts(as.numeric(tapply(m$Qty,m$week,sum))); lines(as.numeric(tapply(pred,m$week,sum)),col=2)
   
-  print(summary(x.lm))
-  print(cate)
-  print(cor(tapply(m$Amnt,m$week,sum),tapply(predict(x.lm),m$week,sum)))
-  plot.ts(as.numeric(tapply(m$Qty,m$week,sum))); lines(tapply(predict(x.lm),m$week,sum),col=2)
-  x.coef <- coef(x.lm)[which(names(coef(x.lm))=='storecount'):length(coef(x.lm))]
-  support.ret <- cbind(m$storecount,m$avg_temp,m$Disc_Ratio,m$pr.ret,m$ooh.ret,m$magazine.ret,m$tv.ret,m$otv.ret,m$search.ret)
-  support <- cbind(m$storecount,m$avg_temp,m$Disc_Ratio,m$pr,m$ooh,m$magazine,m$tv,m$otv,m$search)
+  
 # }
 
 ##########################################
