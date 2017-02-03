@@ -144,4 +144,4 @@ unique(sales$cate)
 # Trail Round
 ##########################################
 
-test1 <- lapply(unique(sales$cate)[1],model_cate)
+test1 <- lapply(unique(sales$cate)[1],model_cate))
