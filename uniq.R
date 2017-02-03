@@ -1,5 +1,5 @@
-# setwd('C:\\\\Users\\\\admin\\\\Documents\\\\mindshare\\\\uniq\\\\data')
-setwd('C:\\Users\\WenluluSens\\Documents\\Project\\mindshare\\Uniqlo')
+setwd('C:\\\\Users\\\\admin\\\\Documents\\\\mindshare\\\\uniq\\\\data')
+# setwd('C:\\Users\\WenluluSens\\Documents\\Project\\mindshare\\Uniqlo')
 # setwd('C:\\Users\\zhu2\\Documents\\mindshare\\uniq')
 
 library(sqldf)
@@ -33,13 +33,18 @@ checksales <- function(){
 #
 unique(sales$cate) 
 model_cate <- function(cate){
-  m <- select(filter(sales,cate==cate),-yr_ssn,-cate)
-  m <- mutate(m,pris=Amnt/Qty,Disc=ifelse(Disc<0,0,Disc),Disc_ratio=Disc/(Disc+Amnt),
-              pr=retention(FRCN_DE_imp_pr+FRCN_SOLW_imp_pr+jogger_imp_pr+
+  # (cate <- paste(unique(sales$cate))[1])
+  m <- mutate(filter(sales[sales$cate==cate,]),
+              Amnt=ifelse(Amnt<0,0,Amnt),Qty=ifelse(Qty<0,0,Qty),Disc=ifelse(Disc<0,0,Disc),
+              Disc_Ratio=ifelse(Amnt+Disc<=0,0,Disc/(Amnt+Disc)))
+  m.code <- paste0(m$week,m$city)
+  
+  m <- mutate(m,
+              pr=FRCN_DE_imp_pr+FRCN_SOLW_imp_pr+jogger_imp_pr+
                              kaws_imp_pr+shanghai_lemaire_imp_pr+shanghai_magic_imp_pr+
                              shanghai_reopen_imp_pr+victoria_imp_pr,
-                           rate=0.75,code=paste0(m$week,m$city)),
-              digital=retention(digital_pr
+              pr.ret = retention(pr,0.75,m.code),
+              digital=digital_pr
                                 +digital_all_fw
                                 +digital_ut
                                 +digital_all_ss
@@ -56,21 +61,25 @@ model_cate <- function(cate){
                                 +digital_knit
                                 +digital_uld
                                 +digital_ht
-                                +digital_down,rate=0.75,code=paste0(m$week,m$city)
-              ),otv=retention(otv_uld
+                                +digital_down,
+              digital.ret = retention(digital,rate=0.75,code=m.code
+              ),otv=otv_uld
                             +otv_ht
                             +otv_ut
                             +otv_jeans
-                            +otv_down_and_uld_and_wool,rate=0.75,code=paste0(m$week,m$city)
-              ),tv=retention(tv_uld
+                            +otv_down_and_uld_and_wool,
+              otv.ret = retention(otv,0.75,m.code
+              ),tv=tv_uld
                              +tv_ht
                              +tv_ut
                              +tv_airism
                              +tv_jeans
-                             +tv_down_and_uld_and_wool,rate=0.75,code=paste0(m$week,m$city)
-              ),search=retention(search_ht
-                                 +search_uld_and_down,rate=0.75,code=paste0(m$week,m$city)
-              ),ooh=retention(ooh_branding
+                             +tv_down_and_uld_and_wool,
+              tv.ret = retention(tv,0.75,m.code
+              ),search=search_ht
+                                 +search_uld_and_down,
+              search.ret = retention(search,0.75,m.code
+              ),ooh=ooh_branding
                               +ooh_flannel
                               +ooh_ht
                               +ooh_jeans
@@ -81,36 +90,36 @@ model_cate <- function(cate){
                               +ooh_sports
                               +ooh_uld
                               +ooh_ut
-                              +ooh_ut_and_linen,rate=0.75,code=paste0(m$week,m$city)
-              ),magazine=retention(magazine_jeans
+                              +ooh_ut_and_linen,
+              ooh.ret = retention(ooh,rate=0.75,code=m.code
+              ),magazine=magazine_jeans
                                    +magazine_knit
                                    +magazine_uld
                                    +magazine_kids
                                    +magazine_pr
                                    +magazine_linen
-                                   +magazine_polo,rate=0.75,code=paste0(m$week,m$city)
+                                   +magazine_polo,
+              magazine.ret = retention(magazine,rate=0.75,code=m.code
               ),
               storecount=LFL_countStr+new_countStr+others_countStr
   )
-  m <- filter(m,Qty>0&Amnt>0)
-  
   x.lm <- lm(Qty~-1
              +paste(city)+paste(substr(week,5,6))+storecount+avg_temp
              # +pris
-             +Disc_ratio
-             +pr+ooh+magazine+tv+otv+search
+             +Disc_Ratio
+             +pr.ret+ooh.ret+magazine.ret+tv.ret+otv.ret+search.ret
              ,data=m)
   
   print(cate)
   print(cor(tapply(m$Amnt,m$week,sum),tapply(predict(x.lm),m$week,sum)))
   plot.ts(as.numeric(tapply(m$Qty,m$week,sum))); lines(tapply(predict(x.lm),m$week,sum),col=2)
-  
-  return(list(data=m,model=x.lm))
+  x.coef <- coef(x.lm)[which(names(coef(x.lm))=='storecount'):length(coef(x.lm))]
+  support.ret <- cbind(m$storecount,m$avg_temp,m$Disc_Ratio,m$pr.ret,m$ooh.ret,m$magazine.ret,m$tv.ret,m$otv.ret,m$search.ret)
+  support <- cbind(m$storecount,m$avg_temp,m$Disc_Ratio,m$pr,m$ooh,m$magazine,m$tv,m$otv,m$search)
 }
 
 ##########################################
 # Trail Round
 ##########################################
 
-test1 <- lapply(unique(sales$cate),model_cate)
-
+test1 <- lapply(unique(sales$cate)[1],model_cate)
