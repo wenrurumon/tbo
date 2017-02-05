@@ -26,7 +26,7 @@ meancenter <- function(x,code){
 getdummy <- function(x){
   rlt <- outer(x,unique(x),'==')+0
   colnames(rlt) <- unique(x)
-  return(rlt)
+  return(rlt[,-ncol(rlt)])
 }
 model <- function(beta,Y,X,betacons){
   beta1 <- ifelse(betacons*beta<0,0,beta)
@@ -127,8 +127,10 @@ X.dummy <- select(ssdata,city,cate,month)
 X.code <- paste(X.dummy$city,X.dummy$cate)
 X.dummy <- do.call(cbind,lapply(X.dummy,getdummy))
   
-X.base <- select(ssdata,storecount)
-X.incr <- select(ssdata,y=qphh,Disc_Ratio,pr.ret,ooh.ret,magazine.ret,tv.ret,otv.ret,search.ret)
+X.base <- select(ssdata,storecount,Disc)
+X.incr <- select(ssdata,y=qphh,
+                 # Disc_Ratio,
+                 pr.ret,ooh.ret,magazine.ret,tv.ret,otv.ret,search.ret)
 # hh <- meancenter(X.base$y,X.code)
 hh <- ssdata$hh
 X.base <- apply(X.base,2,function(x){
@@ -138,10 +140,15 @@ X.base <- apply(X.base,2,function(x){
 rownames(X.base) <- NULL
 X.ss <- cbind(X.dummy,X.base,X.incr)
 corrplot(cor(cbind(X.base,X.incr)))
-x.lm <- lm(y~-1+.,data=X.ss)
+x.lm <- lm(y~.,data=X.ss)
 x.fit <- tapply(predict(x.lm) * hh,ssdata$week,sum)
 x.raw <- tapply(ssdata$Qty,ssdata$week,sum)
 plot.ts(as.numeric(x.raw)); lines(as.numeric(x.fit),col=2)
 summary(x.lm)
 
-
+x.coef <- model(beta=coef(x.lm),
+                Y=select(X.ss,y),
+                X=cbind(1,select(X.ss,-y)),
+                betacons=c(rep(0,ncol(X.dummy)+1),rep(1,ncol(X.ss)-ncol(X.dummy)-1)))
+x.fit2 <- tapply(as.matrix(cbind(1,select(X.ss,-y))) %*% cbind(x.coef) * hh,ssdata$week,sum)
+lines(x.fit2,col=4)
