@@ -127,7 +127,7 @@ X.dummy <- select(ssdata,city,cate,month)
 X.code <- paste(X.dummy$city,X.dummy$cate)
 X.dummy <- do.call(cbind,lapply(X.dummy,getdummy))
   
-X.base <- select(ssdata,storecount,Disc)
+X.base <- select(ssdata,storecount,Disc,trans)
 X.incr <- select(ssdata,y=qphh,
                  # Disc_Ratio,
                  pr.ret,ooh.ret,magazine.ret,tv.ret,otv.ret,search.ret)
@@ -152,3 +152,15 @@ x.coef <- model(beta=coef(x.lm),
                 betacons=c(rep(0,ncol(X.dummy)+1),rep(1,ncol(X.ss)-ncol(X.dummy)-1)))
 x.fit2 <- tapply(as.matrix(cbind(1,select(X.ss,-y))) %*% cbind(x.coef) * hh,ssdata$week,sum)
 lines(x.fit2,col=4)
+
+##################################
+# Summary
+##################################
+
+X <- cbind(1,select(X.ss,-y))
+X.driven <- sapply(1:length(x.coef),function(b){
+  x.coef[b] * X[,b] * hh
+})
+colnames(X.driven) <- colnames(X)
+X.driven <- cbind(select(ssdata,yr_ssn,cate,city,week),X.driven)
+
