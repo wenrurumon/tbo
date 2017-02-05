@@ -3,7 +3,10 @@
 # Load Data and Library
 ###########################
 
-setwd("C:/Users/zhu2/Documents/mindshare/uniq")
+# setwd('C:\\\\Users\\\\admin\\\\Documents\\\\mindshare\\\\uniq\\\\data')
+setwd('C:\\Users\\WenluluSens\\Documents\\Project\\mindshare\\Uniqlo')
+# setwd('C:\\Users\\zhu2\\Documents\\mindshare\\uniq')
+
 library(sqldf)
 library(data.table)
 library(dplyr)
@@ -126,7 +129,7 @@ ssdata <- mutate(sssales,
 X.dummy <- select(ssdata,city,cate,month)
 X.code <- paste(X.dummy$city,X.dummy$cate)
 X.dummy <- do.call(cbind,lapply(X.dummy,getdummy))
-  
+
 X.base <- select(ssdata,storecount,Disc,trans)
 X.incr <- select(ssdata,y=qphh,
                  # Disc_Ratio,
@@ -139,11 +142,11 @@ X.base <- apply(X.base,2,function(x){
 })
 rownames(X.base) <- NULL
 X.ss <- cbind(X.dummy,X.base,X.incr)
-corrplot(cor(cbind(X.base,X.incr)))
+# corrplot(cor(cbind(X.base,X.incr)))
 x.lm <- lm(y~.,data=X.ss)
 x.fit <- tapply(predict(x.lm) * hh,ssdata$week,sum)
 x.raw <- tapply(ssdata$Qty,ssdata$week,sum)
-plot.ts(as.numeric(x.raw)); lines(as.numeric(x.fit),col=2)
+# plot.ts(as.numeric(x.raw)); lines(as.numeric(x.fit),col=2)
 summary(x.lm)
 
 x.coef <- model(beta=coef(x.lm),
@@ -151,7 +154,7 @@ x.coef <- model(beta=coef(x.lm),
                 X=cbind(1,select(X.ss,-y)),
                 betacons=c(rep(0,ncol(X.dummy)+1),rep(1,ncol(X.ss)-ncol(X.dummy)-1)))
 x.fit2 <- tapply(as.matrix(cbind(1,select(X.ss,-y))) %*% cbind(x.coef) * hh,ssdata$week,sum)
-lines(x.fit2,col=4)
+# lines(x.fit2,col=4)
 
 ##################################
 # Summary
@@ -162,5 +165,15 @@ X.driven <- sapply(1:length(x.coef),function(b){
   x.coef[b] * X[,b] * hh
 })
 colnames(X.driven) <- colnames(X)
-X.driven <- cbind(select(ssdata,yr_ssn,cate,city,week),X.driven)
+X.driven <- cbind(select(ssdata,yr_ssn,cate,city,week,Qty),X.driven)
+
+par(mfrow=c(3,3))
+plot.ts(as.numeric(x.raw)); lines(as.numeric(x.fit),col=2); lines(x.fit2,col=4)
+for(i in 1:7){
+  catei <- unique(paste(X.driven$cate))[[i]]
+  tmp <- filter(X.driven,cate==catei)
+  tmp.fit <- as.numeric(tapply(rowSums(tmp[,-1:-5]),tmp$week,sum))
+  tmp.raw <- as.numeric(tapply(tmp$Qty,tmp$week,sum))
+  plot.ts(tmp.raw,main=catei); lines(tmp.fit,col=2)
+}
 
