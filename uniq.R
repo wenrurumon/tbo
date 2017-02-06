@@ -1,9 +1,6 @@
 
-# par(mfrow=c(5,4))
-
-###########################
-# Load Data and Library
-###########################
+############################ Load Data and Library######################################################
+########################################################################################################
 
 setwd("C:/Users/zhu2/Documents/mindshare/uniq")
 library(sqldf)
@@ -12,6 +9,8 @@ library(dplyr)
 
 rm(list=ls())
 load('data.Rdata')
+load('rlt_list.rda')
+sales$cate <- paste(sales$yr_ssn,sales$cate)
 
 retention <- function(x,rate=0.75,code){
   for(i in 2:length(x)){
@@ -39,6 +38,7 @@ model <- function(beta,Y,X,betacons){
   beta2 <-  ifelse(beta2[[1]] * betacons<0, -beta2[[1]], beta2[[1]])
   beta2
 }
+
 aggplot <- function(x,l,main=NULL){
   x <- as.numeric(tapply(x,l,sum))
   plot.ts(x,main=main)
@@ -47,30 +47,16 @@ agglines<- function(x,l,col=2){
   x <- as.numeric(tapply(x,l,sum))
   lines(x,col=col)
 }
-
-###########################
-# check data
-###########################
-
-sales_ssn <- sales %>% group_by(yr_ssn,week) %>% summarise(sum(Qty))
-sales_ssn <- cbind(week=filter(sales_ssn,yr_ssn=="FW")[[2]],
-                   fw=as.numeric(filter(sales_ssn,yr_ssn=="FW")[[3]]),
-                   ss=as.numeric(filter(sales_ssn,yr_ssn=="SS")[[3]]),
-                   yr=as.numeric(filter(sales_ssn,yr_ssn=="Yr")[[3]]))
-# plot.ts(cbind(as.numeric(substr(sales_ssn[,1],5,6)),sales_ssn[,-1]))
-sales$cate <- paste(sales$yr_ssn,sales$cate)
-
-###########################
-# Total model
-###########################
-
-model_cati <- function(cati){
+callcode <- function(text){
+  eval(parse(text=text))
+}
+modelfile <- function(cati){
   cati <- paste(cati)
   print(cati)
-  tsales <- filter(sales,cate==cati,Qty>0)
+  tsales <- filter(sales,cate==cati,Qty>0,week<=20170000)
   tcode <- paste0(tsales$week,tsales$city,tsales$cate,tsales$yr_ssn)
   tsales <- mutate(tsales,
-                   year=substr(week,1,4),
+                   year=paste0('year',substr(week,1,4)),
                    month=substr(week,5,6),
                    aphh=Amnt/hh,qphh=Qty/hh,
                    Amnt=ifelse(Amnt<0,0,Amnt),Qty=ifelse(Qty<0,0,Qty),Disc=ifelse(Disc<0,0,Disc),
@@ -139,115 +125,142 @@ model_cati <- function(cati){
                    ),
                    storecount=LFL_countStr+new_countStr+others_countStr,
                    discphh=Disc/hh)
-  
-  ##########################
-  # Linear Model + Optim1
-  ##########################
-  
-  X.dummy <- cbind(select(tsales,city),paste(tsales$cate,tsales$month,tsales$yr_ssn))
-  X.code <- paste(X.dummy$city,X.dummy$cate)
-  X.dummy <- do.call(cbind,lapply(X.dummy,getdummy))
-  X.base <- select(tsales,storecount,pris)
-  X.incr <- select(tsales,y=qphh,
-                   Disc_Ratio,
-                   digital.ret,pr.ret,ooh.ret,magazine.ret,tv.ret,otv.ret,search.ret)
-  hh <- tsales$hh
-  X.base <- apply(X.base,2,function(x){
-    x <- x/meancenter(x,X.code)
-    ifelse(is.na(x)|is.infinite(x),0,x)
-  })
-  rownames(X.base) <- NULL
-  X.ss <- cbind(X.dummy,X.base,X.incr)
-  # corrplot(cor(cbind(X.base,X.incr)))
-  
-  x.lm <- lm(y~.,data=X.ss)
-  x.fit <- tapply(predict(x.lm) * hh,tsales$week,sum)
-  x.raw <- tapply(tsales$Qty,tsales$week,sum)
-  # plot.ts(as.numeric(x.raw)); lines(as.numeric(x.fit),col=2)
-  # print(tail(coef(summary(x.lm)),(ncol(X.base)+ncol(X.incr)-1)))
-  
-  x.coef <- model(beta=coef(x.lm),
-                  Y=select(X.ss,y),
-                  X=cbind(1,select(X.ss,-y)),
-                  betacons=c(rep(0,ncol(X.dummy)+1),rep(1,ncol(X.ss)-ncol(X.dummy)-1)))
-  x.fit2 <- tapply(as.matrix(cbind(1,select(X.ss,-y))) %*% cbind(x.coef) * hh,tsales$week,sum)
-  # lines(x.fit2,col=4)
-  
-  ##################################
-  # Optim 2
-  ##################################
-  
-  X <- cbind(1,select(X.ss,-y))
-  X.driven <- sapply(1:length(x.coef),function(b){
-    # print(sum(X[,b]))
-    X[,b] * hh
-  })
-  colnames(X.driven) <- colnames(X)
-  X.driven <- X.driven[,-(ncol(X.base)+ncol(X.incr)-1):-1+1+ncol(X.driven)]
-  piecons <- c(#0.327387203,0.362720871,
-    # NA,NA,
-    0.041465459,0.000279447,0.002634099,0.006745688,0.002364053,0.013693191,0.000600579)
-  piemodel <- (colSums(X.driven)/sum(tsales$Qty))[-1:-3]
-  cons <- 1
-  coefcons <- piecons/piemodel*cons+
-    x.coef[-1:-(length(x.coef)-length(piecons))]*(1-cons)
-  x.coef[-1:-(length(x.coef)-length(piecons))] <- ifelse(is.na(coefcons),x.coef[-1:-(length(x.coef)-length(piecons))],coefcons)
-  
-  X <- cbind(1,select(X.ss,-y))
-  X.driven <- sapply(1:length(x.coef),function(b){
-    x.coef[b] * X[,b] * hh
-  })
-  colnames(X.driven) <- colnames(X)
-  X.driven <- X.driven[,colnames(X.driven)%in%names(coefcons)]
-  
-  X.ss2 <- cbind(X.ss[,1:40]); X.ss2$y <- (X.ss2$y *hh-rowSums(X.driven))/hh
-  x.lm2 <- lm(y~.,data=X.ss2)
-  # aggplot(tsales$Qty,tsales$week)
-  # agglines(predict(x.lm2)*hh + rowSums(X.driven),tsales$week)
-  x.coef2 <- model(beta=c(coef(x.lm2),coefcons),
-                   Y=select(X.ss,y),
-                   X=cbind(1,select(X.ss,-y)),
-                   betacons=c(rep(0,ncol(X.dummy)+1),rep(1,ncol(X.ss)-ncol(X.dummy)-1)))
-  
-  res <- as.matrix(cbind(1,select(X.ss,-y))) %*% x.coef2*hh
-  res2 <- (tsales$Qty-res)/hh
-  aggplot(tsales$Qty,tsales$week,main=cati);agglines(res,tsales$week)
-  X <- cbind(1,select(X.ss,-y))
-  X.driven <- sapply(1:length(x.coef2),function(b){
-    x.coef2[b] * X[,b] * hh
-  })
-  colnames(X.driven) <- colnames(X)
-  X.driven <- X.driven[,-(ncol(X.base)+ncol(X.incr)-1):-1+1+ncol(X.driven)]
-  # print(cbind(new=round(colSums(X.driven)/sum(tsales$Qty),5),cons=round(c(Inf,-Inf,Inf,piecons),5)))
-  
-  ##################################
-  # Optim 2
-  ##################################
-  rlt <- list(
-    coef = cbind(coef=x.coef[names(x.coef)%in%colnames(X.driven)]),
-    support = t(apply(tsales[,match(colnames(X.driven),colnames(tsales))],2,function(x){
-      tapply(x,substr(tsales$week,1,4),function(x){sum(as.numeric(x))})
-    })),
-    driven = t(apply(X.driven,2,function(x){
-      tapply(x,substr(tsales$week,1,4),function(x){sum(as.numeric(x))})
-    })),
-    vol = matrix(rep(tapply(tsales$Qty,tsales$year,function(x){sum(as.numeric(x))}),each=10),ncol=length(unique(tsales$year)),dimnames=list(NULL,unique(tsales$year))),
-    val = matrix(rep(tapply(tsales$Amnt,tsales$year,function(x){sum(as.numeric(x))}),each=10),ncol=length(unique(tsales$year)),dimnames=list(NULL,unique(tsales$year)))
-  )
-  for(i in 1:length(rlt)){
-    colnames(rlt[[i]]) <- paste(names(rlt)[i],colnames(rlt[[i]]),sep="_")
-  }
-  rlt <- do.call(cbind,rlt)
-  fit=cbind(fit=tapply(res,tsales$week,sum),vol=tapply(tsales$Qty,tsales$week,sum),val=tapply(tsales$Amnt,tsales$week,sum))
-  write.csv(rlt,'clipboard')
-  list(rlt=cbind(cat=cati,rlt),fit=fit)
-  
+  return(tsales)
 }
 
-cats <- unique(sales$cate)
-test <- lapply(cats,model_cati)
-rlt <- do.call(rbind,lapply(test,function(x){
-  x[[1]][,match(colnames(test[[1]][[1]]),colnames(x[[1]]))]
-}))
+#################################################################################################
+############################ Model by Model######################################################
+#################################################################################################
 
+pie5 <- c(	0.07550624	,
+           0.000180903	,
+           0.002114839	,
+           0.003225364	,
+           2.9646E-05	,
+           0.017969077	,
+           0.001440313	)
+
+
+cats <- unique(sales$cate)
+cats <- cats[-grep('FW',cats)]
+rlt2 <- list()
+
+###########################
+# Manual Modeling
+###########################
+
+
+#Setup
+i <- 10
+header=strsplit('coef	tperiod	year2014	year2015	year2016','\t')[[1]]
+
+#filter data period
+data <- modelfile(cats[[i]])
+aggplot(data$Qty,data$week)
+# data <- filter(data,week>=20150000)
+
+rlti <- rlt_list
+rlti <- (rlt_list[[which(names(rlt_list)==cats[[i]])]][[1]][,c(9,13),drop=F])
+holdout <- cbind(1,as.matrix(data[,match(rownames(rlti),colnames(data))]))
+
+#Round1 Residual Model with adjustment from conspie
+x.lm1 <- lm(qphh~city+month+avg_temp+storecount,data=data)
+aggplot(data$Qty,data$week);agglines(predict(x.lm1)*data$hh,data$week)
+fit1 <- as.numeric(predict(x.lm1))
+res1 <- as.numeric(x.lm1$residuals)
+res.lm <- lm(res1~holdout-1)
+res.coef <- coef(res.lm)
+res.coef[-1] <- ifelse(res.coef[-1]<0,0,res.coef[-1])
+cons.coef <- c(res.coef[1:4],pie5/(colSums((holdout*data$hh)[data$week>=20160000,-1:-4])/sum(data$Qty[data$week>=2016])))
+cons.coef[-1] <- ifelse(cons.coef[-1]<0,0,cons.coef[-1])
+
+x.coef <- (cons.coef+res.coef)/2
+res.driven <- (outer(data$hh,x.coef,"*") * holdout)[,-1]
+if(length(unique(data$year))==1){
+  output <- cbind(coef=x.coef[-1],
+                  tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                  round(((apply(res.driven,2,function(x){
+                    tapply(x,data$year,sum)
+                  })/
+                    as.numeric(tapply(data$Qty,data$year,sum)))),10))
+} else {
+  output <- cbind(coef=x.coef[-1],
+                  tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                  round((t(apply(res.driven,2,function(x){
+                    tapply(x,data$year,sum)
+                  })/
+                    as.numeric(tapply(data$Qty,data$year,sum)))),10))
+}
+
+#Check discount value percentage
+Discount_percentage <- sum(as.numeric(data$Disc))/sum(as.numeric(data$Amnt))
+if(output[3,ncol(output)]>Discount_percentage * 0.8){
+  x.coef[4] <- Discount_percentage * 0.8 / output[3,ncol(output)] * x.coef[4]
+}
+res.driven <- (outer(data$hh,x.coef,"*") * holdout)[,-1]
+if(length(unique(data$year))==1){
+  output <- cbind(coef=x.coef[-1],
+                  tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                  round(((apply(res.driven,2,function(x){
+                    tapply(x,data$year,sum)
+                  })/
+                    as.numeric(tapply(data$Qty,data$year,sum)))),10))
+} else {
+  output <- cbind(coef=x.coef[-1],
+                  tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                  round((t(apply(res.driven,2,function(x){
+                    tapply(x,data$year,sum)
+                  })/
+                    as.numeric(tapply(data$Qty,data$year,sum)))),10))
+}
+
+#Output for the first round
+write.csv(output,'clipboard')
+y.holdout <- rowSums(res.driven[,-1])/data$hh
+
+#Again optim the coef and set the threshold range as [1/2,2]
+data <- mutate(data,qphh2=qphh-y.holdout)
+x.lm2 <- lm(data$qphh2~city+month+avg_temp,data=data)
+fit2 <- as.numeric(predict(x.lm2))
+res2 <- data$qphh - fit2
+x.coef2 <- model(x.coef,Y=res2,X=holdout,betacons=c(0,rep(1,ncol(holdout)-1)))
+
+x.coef2[-1:-4] <- ifelse(x.coef2[-1:-4]/x.coef[-1:-4]>2,x.coef[-1:-4]*2,x.coef2[-1:-4])
+x.coef2[-1:-4] <- ifelse(x.coef2[-1:-4]/x.coef[-1:-4]<1/2,x.coef[-1:-4]/2,x.coef2[-1:-4])
+res.driven <- (outer(data$hh,x.coef2,"*") * holdout)[,-1]
+
+if((colSums(res.driven)/sum(data$Qty))[3]>Discount_percentage * 0.8){
+  x.coef2[4] <- Discount_percentage * 0.8 / output[3,ncol(output)] * x.coef[4]
+  res.driven <- (outer(data$hh,x.coef2,"*") * holdout)[,-1]
+}
+
+if(length(unique(data$year))==1){
+  output <- cbind(coef=x.coef2[-1],
+                  tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                  round(((apply(res.driven,2,function(x){
+                    tapply(x,data$year,sum)
+                  })/
+                    as.numeric(tapply(data$Qty,data$year,sum)))),10))
+  colnames(output)[3] <- 'year2016'
+} else {
+  output <- cbind(coef=x.coef2[-1],
+                  tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                  round((t(apply(res.driven,2,function(x){
+                    tapply(x,data$year,sum)
+                  })/
+                    as.numeric(tapply(data$Qty,data$year,sum)))),10))
+}
+rownames(output) <- paste(cats[[i]],rownames(output),sep=" ")
+output <- output[,match(header,colnames(output))]
+colnames(output) <- header
+write.csv(output,'clipboard')
+
+#An overfloating fitchart
+y.holdout <- rowSums(res.driven[,-1:-3])/data$hh
+data <- mutate(data,qphh3=qphh-y.holdout)
+fitf <- predict(lm(qphh3~city+month+avg_temp+storecount+pris+Disc_Ratio,data=data))
+aggplot(data$Qty,data$week,main=cats[[i]])
+agglines((fitf + y.holdout)*data$hh,data$week)
+output
+print(sum(as.numeric(data$Disc))/sum(as.numeric(data$Amnt))) #check discount contribution
 
