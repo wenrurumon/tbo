@@ -140,127 +140,252 @@ pie5 <- c(	0.07550624	,
            0.017969077	,
            0.001440313	)
 
-
 cats <- unique(sales$cate)
 cats <- cats[-grep('FW',cats)]
-rlt2 <- list()
 
-###########################
-# Manual Modeling
-###########################
+#modelbymodel.R
 
+write.csv(as.matrix(sales %>% group_by(cate,substr(week,1,4)) %>% summarise(sum(as.numeric(Qty)),sum(as.numeric(Amnt)))),'clipboard')
 
-#Setup
-i <- 10
-header=strsplit('coef	tperiod	year2014	year2015	year2016','\t')[[1]]
+######################################
+#The model
+######################################
 
-#filter data period
-data <- modelfile(cats[[i]])
-aggplot(data$Qty,data$week)
-# data <- filter(data,week>=20150000)
-
-rlti <- rlt_list
-rlti <- (rlt_list[[which(names(rlt_list)==cats[[i]])]][[1]][,c(9,13),drop=F])
-holdout <- cbind(1,as.matrix(data[,match(rownames(rlti),colnames(data))]))
-
-#Round1 Residual Model with adjustment from conspie
-x.lm1 <- lm(qphh~city+month+avg_temp+storecount,data=data)
-aggplot(data$Qty,data$week);agglines(predict(x.lm1)*data$hh,data$week)
-fit1 <- as.numeric(predict(x.lm1))
-res1 <- as.numeric(x.lm1$residuals)
-res.lm <- lm(res1~holdout-1)
-res.coef <- coef(res.lm)
-res.coef[-1] <- ifelse(res.coef[-1]<0,0,res.coef[-1])
-cons.coef <- c(res.coef[1:4],pie5/(colSums((holdout*data$hh)[data$week>=20160000,-1:-4])/sum(data$Qty[data$week>=2016])))
-cons.coef[-1] <- ifelse(cons.coef[-1]<0,0,cons.coef[-1])
-
-x.coef <- (cons.coef+res.coef)/2
-res.driven <- (outer(data$hh,x.coef,"*") * holdout)[,-1]
-if(length(unique(data$year))==1){
-  output <- cbind(coef=x.coef[-1],
-                  tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
-                  round(((apply(res.driven,2,function(x){
-                    tapply(x,data$year,sum)
-                  })/
-                    as.numeric(tapply(data$Qty,data$year,sum)))),10))
-} else {
-  output <- cbind(coef=x.coef[-1],
-                  tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
-                  round((t(apply(res.driven,2,function(x){
-                    tapply(x,data$year,sum)
-                  })/
-                    as.numeric(tapply(data$Qty,data$year,sum)))),10))
-}
-
-#Check discount value percentage
-Discount_percentage <- sum(as.numeric(data$Disc))/sum(as.numeric(data$Amnt))
-if(output[3,ncol(output)]>Discount_percentage * 0.8){
-  x.coef[4] <- Discount_percentage * 0.8 / output[3,ncol(output)] * x.coef[4]
-}
-res.driven <- (outer(data$hh,x.coef,"*") * holdout)[,-1]
-if(length(unique(data$year))==1){
-  output <- cbind(coef=x.coef[-1],
-                  tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
-                  round(((apply(res.driven,2,function(x){
-                    tapply(x,data$year,sum)
-                  })/
-                    as.numeric(tapply(data$Qty,data$year,sum)))),10))
-} else {
-  output <- cbind(coef=x.coef[-1],
-                  tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
-                  round((t(apply(res.driven,2,function(x){
-                    tapply(x,data$year,sum)
-                  })/
-                    as.numeric(tapply(data$Qty,data$year,sum)))),10))
-}
-
-#Output for the first round
-write.csv(output,'clipboard')
-y.holdout <- rowSums(res.driven[,-1])/data$hh
-
-#Again optim the coef and set the threshold range as [1/2,2]
-data <- mutate(data,qphh2=qphh-y.holdout)
-x.lm2 <- lm(data$qphh2~city+month+avg_temp,data=data)
-fit2 <- as.numeric(predict(x.lm2))
-res2 <- data$qphh - fit2
-x.coef2 <- model(x.coef,Y=res2,X=holdout,betacons=c(0,rep(1,ncol(holdout)-1)))
-
-x.coef2[-1:-4] <- ifelse(x.coef2[-1:-4]/x.coef[-1:-4]>2,x.coef[-1:-4]*2,x.coef2[-1:-4])
-x.coef2[-1:-4] <- ifelse(x.coef2[-1:-4]/x.coef[-1:-4]<1/2,x.coef[-1:-4]/2,x.coef2[-1:-4])
-res.driven <- (outer(data$hh,x.coef2,"*") * holdout)[,-1]
-
-if((colSums(res.driven)/sum(data$Qty))[3]>Discount_percentage * 0.8){
-  x.coef2[4] <- Discount_percentage * 0.8 / output[3,ncol(output)] * x.coef[4]
+model_cati <- function(i,filteryear=0){
+  
+  #Setup
+  
+  header=strsplit('coef	tperiod	year2014_driven	year2015_driven	year2016_driven	year2014_pie	year2015_pie	year2016_pie','\t')[[1]]
+  
+  #filter data period
+  data <- modelfile(cats[[i]])
+  # aggplot(data$Qty,data$week)
+  data <- filter(data,week>=(filteryear*10000))
+  
+  #Step 1 remove the seasonality impact on the response variable
+  x.lm1 <- lm(qphh~city+month,data=data)
+  # aggplot(data$Qty,data$week);agglines(predict(x.lm1)*data$hh,data$week)
+  fit1 <- as.numeric(predict(x.lm1))
+  res1 <- as.numeric(x.lm1$residuals)
+  
+  #Variables in the residual model
+  holdout <- as.matrix(cbind(intecept=1,select(data,storecount,new_countStr,sku_count,pris,
+                                               Disc_Ratio,
+                                               digital.ret,pr.ret,ooh.ret,magazine.ret,tv.ret,otv.ret,search.ret)))
+  res.lm <- lm(res1~holdout-1)
+  res.coef <- coef(res.lm)
+  
+  #Align the contribution to the total level expectation
+  res.coef[-1] <- ifelse(res.coef[-1]<0,0,res.coef[-1])
+  cons.coef <- c(res.coef[1:6],
+                 pie5/(colSums((holdout*data$hh)[data$week>=20160000,-1:-6])/sum(data$Qty[data$week>=2016])
+                 ))
+  cons.coef[-1] <- ifelse(cons.coef[-1]<0,0,cons.coef[-1])
+  
+  x.coef <- (cons.coef+res.coef)/2
+  x.coef <- ifelse(is.infinite(x.coef),0,x.coef)
+  res.driven <- (outer(data$hh,x.coef,"*") * holdout)[,-1]
+  if(length(unique(data$year))==1){
+    output <- cbind(coef=x.coef[-1],
+                    tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                    round(((apply(res.driven,2,function(x){
+                      tapply(x,data$year,sum)
+                    })/
+                      as.numeric(tapply(data$Qty,data$year,sum)))),10))
+  } else {
+    output <- cbind(coef=x.coef[-1],
+                    tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                    round((t(apply(res.driven,2,function(x){
+                      tapply(x,data$year,sum)
+                    })/
+                      as.numeric(tapply(data$Qty,data$year,sum)))),10))
+  }
+  
+    #Check contribution for base variables and promotion
+  Discount_percentage <- sum(as.numeric(data$Disc))/sum(as.numeric(data$Amnt))
+  if(output[5,2]>Discount_percentage * 0.6){
+    x.coef[6] <- Discount_percentage * 0.6 / output[5,2] * x.coef[6]
+  }
+  x.coef[2:5] <- ifelse(abs(output[1:4,ncol(output)])>1,x.coef[2:5]/abs(output[1:4,ncol(output)]),x.coef[2:5])
+  
+  res.driven <- (outer(data$hh,x.coef,"*") * holdout)[,-1]
+  if(length(unique(data$year))==1){
+    output <- cbind(coef=x.coef[-1],
+                    tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                    round(((apply(res.driven,2,function(x){
+                      tapply(x,data$year,sum)
+                    })/
+                      as.numeric(tapply(data$Qty,data$year,sum)))),10))
+  } else {
+    output <- cbind(coef=x.coef[-1],
+                    tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                    round((t(apply(res.driven,2,function(x){
+                      tapply(x,data$year,sum)
+                    })/
+                      as.numeric(tapply(data$Qty,data$year,sum)))),10))
+  }
+  
+  #Output for the first round
+  # write.csv(output,'clipboard')
+  y.holdout <- rowSums(res.driven[,-1])/data$hh
+  
+  #remove the seasonality with holdout excluded
+  data <- mutate(data,qphh2=qphh-y.holdout)
+  x.lm2 <- lm(data$qphh2~city+month,data=data)
+  fit2 <- as.numeric(predict(x.lm2))
+  res2 <- data$qphh - fit2
+  
+  #Optim the coeficient and control the difference between [1/2,2]
+  x.coef2 <- model(x.coef,Y=res2,X=holdout,betacons=c(0,rep(1,ncol(holdout)-1)))
+  x.coef2[-1:-6] <- ifelse(x.coef2[-1:-6]/x.coef[-1:-6]>2,x.coef[-1:-6]*2,x.coef2[-1:-6])
+  x.coef2[-1:-6] <- ifelse(x.coef2[-1:-6]/x.coef[-1:-6]<1/2,x.coef[-1:-6]/2,x.coef2[-1:-6])
+  
+  #Check contribution for base variables and promotion
   res.driven <- (outer(data$hh,x.coef2,"*") * holdout)[,-1]
+  if((colSums(res.driven)/sum(data$Qty))[5]>Discount_percentage * 0.6){
+    x.coef2[6] <- Discount_percentage * 0.6 / (colSums(res.driven)/sum(data$Qty))[5] * x.coef2[6]
+  }
+  x.coef2[2:5] <- ifelse(abs((colSums(res.driven)/sum(data$Qty))[1:4])>1,x.coef2[2:5]/abs((colSums(res.driven)/sum(data$Qty))[1:4]),x.coef2[2:5])
+  res.driven <- (outer(data$hh,x.coef2,"*") * holdout)[,-1]
+  
+  #output
+  if(length(unique(data$year))==1){
+    output <- cbind(coef=x.coef2[-1],
+                    tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                    (apply(res.driven,2,function(x){
+                      tapply(x,data$year,sum)
+                    })),
+                    round(((apply(res.driven,2,function(x){
+                      tapply(x,data$year,sum)
+                    })/
+                      as.numeric(tapply(data$Qty,data$year,sum)))),10))
+    colnames(output)[3:4] <- c('year2016_driven','year2016_pie')
+  } else {
+    output <- cbind(coef=x.coef2[-1],
+                    tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                    t(apply(res.driven,2,function(x){
+                      tapply(x,data$year,sum)
+                    })),
+                    round((t(apply(res.driven,2,function(x){
+                      tapply(x,data$year,sum)
+                    })/
+                      as.numeric(tapply(data$Qty,data$year,sum)))),10))
+    cname <- colnames(output)[grep('year',colnames(output))]
+    cname[1:(length(cname)/2)] <- paste0(cname[1:(length(cname)/2)],'_driven')
+    cname[-1:-(length(cname)/2)] <- paste0(cname[-1:-(length(cname)/2)],'_pie')
+    colnames(output)[grep('year',colnames(output))] <- cname
+  }
+  rownames(output) <- paste(cats[[i]],rownames(output),sep=" ")
+  output <- output[,match(header,colnames(output))]
+  colnames(output) <- header
+  # write.csv(output,'clipboard')
+  
+  #Input 20% max discounted value
+  y.holdout <- rowSums(res.driven)/data$hh
+  data <- mutate(data,qphh3=qphh-y.holdout)
+  x.lm3 <- lm(qphh3~city+month+avg_temp+discphh,data=data)
+  tprpie_overfit <- sum(coef(x.lm3)[grep('discphh',names(coef(x.lm3)))]*data$discphh*data$hh)/sum(data$Qty)
+  tpr_maxup <- output[5,2]/3
+  coef_tpr2 <- ifelse(tprpie_overfit>tpr_maxup,
+                      coef(x.lm3)[grep('discphh',names(coef(x.lm3)))]/tprpie_overfit*tpr_maxup,
+                      coef(x.lm3)[grep('discphh',names(coef(x.lm3)))])
+  x.coef3 <- c(x.coef2,disc=coef_tpr2)
+  res.driven <- cbind(res.driven,disc=coef_tpr2*data$discphh*data$hh)
+  
+  #Input avg_temp with dummies
+  # y.holdout <- rowSums(res.driven)/data$hh
+  # data <- mutate(data,qphh3=qphh-y.holdout)
+  # x.lm3 <- lm(qphh3~city+month+avg_temp,data=data)
+  # coef_temp <- coef(x.lm3)[length(coef(x.lm3))]
+  # x.coef3 <- c(x.coef3,coef_temp)
+  # res.driven <- cbind(res.driven,avg_temp=coef_temp*data$avg_temp*data$hh)
+  
+  #Input avg_temp without dummies
+  y.holdout <- rowSums(res.driven)/data$hh
+  data <- mutate(data,qphh3=qphh-y.holdout)
+  x.lm3 <- lm(qphh3~city+month,data=data)
+  coef_temp <- coef(lm(x.lm3$residuals~data$avg_temp))[2]
+  x.coef3 <- c(x.coef3,coef_temp)
+  res.driven <- cbind(res.driven,avg_temp=coef_temp*data$avg_temp*data$hh)
+  
+  #Output Finalized
+  if(length(unique(data$year))==1){
+    output <- cbind(coef=x.coef3[-1],
+                    tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                    (apply(res.driven,2,function(x){
+                      tapply(x,data$year,sum)
+                    })),
+                    round(((apply(res.driven,2,function(x){
+                      tapply(x,data$year,sum)
+                    })/
+                      as.numeric(tapply(data$Qty,data$year,sum)))),10))
+    colnames(output)[3:4] <- c('year2016_driven','year2016_pie')
+  } else {
+    output <- cbind(coef=x.coef3[-1],
+                    tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
+                    t(apply(res.driven,2,function(x){
+                      tapply(x,data$year,sum)
+                    })),
+                    round((t(apply(res.driven,2,function(x){
+                      tapply(x,data$year,sum)
+                    })/
+                      as.numeric(tapply(data$Qty,data$year,sum)))),10))
+    cname <- colnames(output)[grep('year',colnames(output))]
+    cname[1:(length(cname)/2)] <- paste0(cname[1:(length(cname)/2)],'_driven')
+    cname[-1:-(length(cname)/2)] <- paste0(cname[-1:-(length(cname)/2)],'_pie')
+    colnames(output)[grep('year',colnames(output))] <- cname
+  }
+  rownames(output) <- paste(cats[[i]],rownames(output),sep=" ")
+  output <- output[,match(header,colnames(output))]
+  colnames(output) <- header
+  output <- output[c(1,2,3,4,14,5,13,6:12),]
+  
+  #decomp finalized
+  dummy <- (predict(x.lm3)-coef_temp*data$avg_temp) * data$hh
+  decomp <- cbind(dummy=dummy,res.driven)
+  fit3 <- as.numeric(tapply(rowSums(decomp),data$week,sum))
+  raw <- as.numeric(tapply(data$Qty,data$week,sum))
+  decomp <- cbind(vol=data$Qty,val=data$Amnt,predvol=rowSums(decomp),decomp)
+  weeklydecomp <- apply(decomp,2,function(x){
+    tapply(x,data$week,sum)
+  })
+  rownames(weeklydecomp) <- paste(cats[[i]],rownames(weeklydecomp),sep="_")
+  monthcode <- tapply(data$month,data$week,function(x){mean(as.numeric(x))})
+  plot.ts(raw,main=cats[[i]]); lines(fit3,col=2)
+  print(output)
+  write.csv(output,'clipboard')
+
+  list(
+    output=output,decomp=decomp,weeklydecomp=weeklydecomp,
+    rsq=summary(lm(raw~fit3))$r.square,
+    tmape=summary(abs(fit3-raw)/raw),
+    pmape=summary((abs(fit3-raw)/raw)[monthcode>=3&monthcode<=8])
+  )
 }
 
-if(length(unique(data$year))==1){
-  output <- cbind(coef=x.coef2[-1],
-                  tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
-                  round(((apply(res.driven,2,function(x){
-                    tapply(x,data$year,sum)
-                  })/
-                    as.numeric(tapply(data$Qty,data$year,sum)))),10))
-  colnames(output)[3] <- 'year2016'
-} else {
-  output <- cbind(coef=x.coef2[-1],
-                  tperiod=round((colSums(res.driven)/sum(data$Qty)),10),
-                  round((t(apply(res.driven,2,function(x){
-                    tapply(x,data$year,sum)
-                  })/
-                    as.numeric(tapply(data$Qty,data$year,sum)))),10))
-}
-rownames(output) <- paste(cats[[i]],rownames(output),sep=" ")
-output <- output[,match(header,colnames(output))]
-colnames(output) <- header
-write.csv(output,'clipboard')
+######################################
+# Modeling
+######################################
 
-#An overfloating fitchart
-y.holdout <- rowSums(res.driven[,-1:-3])/data$hh
-data <- mutate(data,qphh3=qphh-y.holdout)
-fitf <- predict(lm(qphh3~city+month+avg_temp+storecount+pris+Disc_Ratio,data=data))
-aggplot(data$Qty,data$week,main=cats[[i]])
-agglines((fitf + y.holdout)*data$hh,data$week)
-output
-print(sum(as.numeric(data$Disc))/sum(as.numeric(data$Amnt))) #check discount contribution
+par(mfrow=c(3,4))
+rlt <- list(
+  model_cati(1),
+  model_cati(2,2015),
+  model_cati(3,2016),
+  model_cati(4,2015),
+  model_cati(5),
+  model_cati(6,2016),
+  model_cati(7,2015),
+  model_cati(8),
+  model_cati(9),
+  model_cati(10)
+)  
 
+#output calc
+write.csv(do.call(rbind,lapply(rlt,function(x){x[[1]]})),'clipboard')
+#output fit summary
+fit_summary <- t(sapply(rlt,function(x){do.call(c,x[4:6])}))
+rownames(fit_summary) <- cats
+write.csv(fit_summary,'clipboard')
+#output decomp
+write.csv(do.call(rbind,lapply(rlt,function(x){x$weeklydecomp})),'temp.csv')
