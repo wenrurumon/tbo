@@ -36,7 +36,7 @@ dichotomy <- function(xmin, xmax, itn = 100, cost=cost){
     i <- i+1
     xmed <- (xmin+xmax)/2
     rlti <- sapply(c(xmin,xmax),cost,input=input)
-    # print(min(rlti))
+    print((rlti))
     if(rlti[1]>rlti[2]){
       xmin <- xmed
     } else {
@@ -45,7 +45,7 @@ dichotomy <- function(xmin, xmax, itn = 100, cost=cost){
     if(xmin==xmax){break}
   }
   return(
-    c(x=xmin,cost=cost(xmin,input),itn=i)
+    c(x=(xmin+xmax)/2,cost=cost(xmin,input),itn=i)
   )
 }
 
@@ -73,14 +73,14 @@ test.gp <- sapply(1:30,function(x){
 test.dt <- sapply(1:30,function(x){
   set.seed(x); input <<- runif(5)
   print(x)
-  dt(-5,5,ntree=5,itn=10,cost=cost)
+  dt(-5,5,ntree=5,itn=100,cost=cost)
 })
 
 
 #################
 
-set.seed(123); input <- runif(5); print(input)
+set.seed(123555); input <- runif(5); print(input)
 # plot.ts(sapply(-5000:5000/100,cost,input=input))
 genetic_programming(-5000:5000/1000,itn=30,cost=cost)
-dt(-5,5,ntree=5,itn=100,cost=cost)
+dt(-5,5,ntree=10,itn=100,cost=cost)
 dt(-10,10,ntree=20,itn=100,cost=cost)
