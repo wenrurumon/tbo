@@ -51,7 +51,8 @@ dichotomy <- function(xmin, xmax, itn = 100, cost=cost){
 
 #dichotomy tree
 dt <- function(xmin,xmax,ntree=5,itn=100,cost=cost){
-  tree <- sort(c(xmin,xmax,runif(4,-5,5)))
+  # xmin <- -10; xmax <- 10; ntree=20; itn=100;
+  tree <- sort(c(xmin,xmax,runif(ntree,xmin,xmax)))
   while(ntree>0){
     rlt.tree <- sapply(1:ntree,function(i){
       dichotomy(tree[i],tree[i+1],itn=itn,cost=cost)
@@ -79,6 +80,7 @@ test.dt <- sapply(1:30,function(x){
 #################
 
 set.seed(123); input <- runif(5); print(input)
-plot.ts(sapply(-5000:5000/100,cost,input=input))
+# plot.ts(sapply(-5000:5000/100,cost,input=input))
 genetic_programming(-5000:5000/1000,itn=30,cost=cost)
 dt(-5,5,ntree=5,itn=100,cost=cost)
+dt(-10,10,ntree=20,itn=100,cost=cost)
