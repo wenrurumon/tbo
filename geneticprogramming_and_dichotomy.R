@@ -60,7 +60,7 @@ dt <- function(xmin,xmax,ntree=5,itn=100,cost=cost){
     tree <- sort(rlt.tree[1,])
     ntree <- length(tree)-1
   }
-  return(rlt.tree[,1])
+  return(rlt.tree[1:2,1])
 }
 
 #Simulation
