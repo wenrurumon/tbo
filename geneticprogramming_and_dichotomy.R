@@ -51,7 +51,6 @@ dichotomy <- function(xmin, xmax, itn = 100, cost=cost){
 
 #dichotomy tree
 dt <- function(xmin,xmax,ntree=5,itn=100,cost=cost){
-  xmin <- -5; xmax <- 5; ntree=5; itn=100;
   tree <- sort(c(xmin,xmax,runif(4,-5,5)))
   while(ntree>0){
     rlt.tree <- sapply(1:ntree,function(i){
