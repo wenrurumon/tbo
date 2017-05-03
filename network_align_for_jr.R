@@ -1,0 +1,65 @@
+
+rm(list=ls())
+setwd('C:/Users/zhu2/Documents/forjr')
+
+library(igraph)
+library(dplyr)
+
+#gene in Wnt pathways
+load('C:/Users/zhu2/Documents/getpathway/model20170215/rlt_cluster_network.rda')
+gene <- rownames(expnet[[32]])
+
+#KEGG reference
+data <- read.table('clipboard',header=T)
+g <- graph_from_data_frame(data[,1:2])
+
+#random network to data frame
+library(pcalg)
+randomDAGmat <- function(n,p){
+  showAmat(randomDAG(n,p))==2
+}
+rmat <- randomDAGmat(145,0.002)+0
+dimnames(rmat) <- list(gene,gene)
+# rmat <- expnet[[32]][1:145,1:145]
+rmat.df <- filter(melt(rmat),value!=0)[,1:2]
+
+validate <- function(from,to,ref){
+  # from <- paste(rmat.df[1,1])
+  # to <- paste(rmat.df[1,2])
+  # ref <- g
+  ifrom <- which(names(V(ref))==from)
+  ito <- which(names(V(ref))==to)
+  igraph::shortest_paths(g,V(ref)[ifrom],V(ref)[ito])
+}
+validate2 <- function(rmat.df,ref){
+  rlt <- apply(rmat.df,1,function(x){
+    validate(x[1],x[2],ref)
+  })
+  cbind(rmat.df,paths=rlt)
+}
+# validate2(rmat.df,g)
+validate3 <- function(x,ref){
+  rlt <- lapply(1:nrow(x),function(i){
+    validate(x[i,1],x[i,2],ref)$vpath[[1]]
+  })
+  names(rlt) <- paste(x[,1],x[,2])
+  rlt
+}
+rlt <- validate3(rmat.df,g)
+
+#Check undirected
+
+check <- function(p){
+  # p <- rlt[[which(sapply(rlt,length)>0)[1]]];p
+  p2 <- c()
+  for(i in 1:(length(p)-1)){
+    p2[i] <- filter(data,From==names(p)[1]&To==names(p)[2])$code  
+  }
+  all(p2<3) & length(p2)>0
+}
+
+for(i in 1:length(rlt)){
+  print(i)
+  print(check(rlt[[i]]))
+}
+
