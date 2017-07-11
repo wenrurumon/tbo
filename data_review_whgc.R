@@ -23,31 +23,6 @@ head(rawdata) #check variables
 # 总体 by 价格段分组 总票房 和 售出票数
 # 总体 by 折扣 和 原价 分组 总票房 和 售出票数（或者按照不同折扣力度分组汇总，看看数据具体情况）
 # 总体 by 提前购票时间分组  (2天，10天，1个月…之类,视具体数据情况来定)
-rm(list=ls())
-library(data.table)
-library(dplyr)
-library(slam)
-library(sqldf)
-
-############################
-
-setwd('C:/Users/admin/Documents/wenhuaguangchang/') #set up the working folder
-load("rawdata_20170707.rdata") # load data
-head(rawdata) #check variables
-
-############################
-
-# 总体 总票房 和售出票数
-# 总体 平均每场次票房 和 售出票数
-# 总体 by 平均票单价分组 （看看数据具体情况份） 总票房，票数
-# 总体 by 剧目 总票房, 票数, 平均票单价
-# 总体 by 剧目 平均每场次票房 和 售出票数
-# 总体 by 购买渠道 总票房 和 售出张数
-# 总体 by 人均观剧次数分组 总票房 和 售出票数 (1次，2~5次，5~10次...之类，视具体数据情况来定)
-# 总体 by 单笔transaction 票数分组 总票房 和 售出票数 （1张，2~5张...之类，视具体数据情况来定)
-# 总体 by 价格段分组 总票房 和 售出票数
-# 总体 by 折扣 和 原价 分组 总票房 和 售出票数（或者按照不同折扣力度分组汇总，看看数据具体情况）
-# 总体 by 提前购票时间分组  (2天，10天，1个月…之类,视具体数据情况来定)
 
 #Generate dataset for descriptive
 mfile <- arrange(rawdata,sessionnmtop,session_time) #sort the data by name and date of the show
@@ -79,38 +54,3 @@ out4 <- mfile %>% group_by(session_month,sessionnmtop) %>% summarise(
 out5 <- mfile %>% group_by(session_month,order_type) %>% summarise(
   vol=sum(order_num),val=sum(payment),avp=val/vol
 ) ## 总体 by 购买渠道 总票房 和 售出张数
-
-############################
-#data output with filter
-############################
-
-
-#Generate dataset for descriptive
-mfile <- arrange(rawdata,sessionnmtop,session_time) #sort the data by name and date of the show
-mfile <- select(rawdata,order_type,sessionnmtop,session_time,order_num,order_time,payment,list_payment,session_timeperiod) #select the variables we need
-mfile <- filter(mfile,!is.na(session_time)) #filter the obs with <NA>
-mfile <- mutate(mfile,
-                session_month=substr(session_time,1,7),
-                avp = payment/order_num,
-                rp = list_payment/order_num) #generate more variables
-
-############################
-#out1-out5需要rita基本上搞清楚并且能短期逐渐自己搞定
-############################
-
-out1 <- mfile %>% group_by(session_month) %>% summarise(
-  vol=sum(order_num),val=sum(payment),avp=val/vol
-) # 总体 总票房 和售出票数
-out2 <- mfile %>% group_by(session_month,sessionnmtop,session_time) %>% summarise(
-  vol=sum(order_num),val=sum(payment),avp=val/vol
-) # 总体 平均每场次票房 和 售出票数
-out3 <- mfile %>% group_by(session_month,rp) %>% summarise(
-  vol=sum(order_num),val=sum(payment),avp=val/vol
-) #总体 by 平均票单价分组 （看看数据具体情况份） 总票房，票数
-out4 <- mfile %>% group_by(session_month,sessionnmtop) %>% summarise(
-  n=n_distinct(session_time),vol=sum(order_num),val=sum(payment),avp=val/vol
-) ## 总体 by 剧目 平均每场次票房 和 售出票数
-out5 <- mfile %>% group_by(session_month,order_type) %>% summarise(
-  vol=sum(order_num),val=sum(payment),avp=val/vol
-) ## 总体 by 购买渠道 总票房 和 售出张数
-
