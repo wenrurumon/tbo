@@ -56,9 +56,7 @@ out5 <- mfile %>% group_by(session_month,order_type) %>% summarise(
 ) ## 总体 by 购买渠道 总票房 和 售出张数
 
 ############################
-#out1-out5需要rita基本上搞清楚并且能短期逐渐自己搞定
-#基本上就是通过不同方式的group by来summarise数据
-#n_distinct这个函数是数有多少个unique选项
+# next half
 ############################
 
 mfile <- arrange(rawdata,sessionnmtop,session_time) #sort the data by name and date of the show
