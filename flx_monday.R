@@ -1,7 +1,8 @@
 
 rm(list=ls())
-setwd('/Users/wenrurumon/Desktop/Fenbid_Filxonase/model')
+setwd('E:\\gsk\\fbd_flx\\model')
 # raw <- openxlsx::read.xlsx('mmix_flx.xlsx',1)[,-1]
+# setwd('/Users/wenrurumon/Desktop/Fenbid_Filxonase/model')
 raw <- as.data.frame(data.table::fread('mmix_flx_withsku.csv'))[,-1]
 
 #############################
@@ -73,6 +74,7 @@ plot.model <- function(x,y,minval=0){
 #############################
 
 #sales data
+
 flx.val <- getvar('FLIXONASE_AQUA_VAL',F)
 flx.vol <- getvar('FLIXONASE_AQUA_PACK',F)
 flx.avp <- flx.val / flx.vol
@@ -89,8 +91,19 @@ y3 <- (ydum=='2018')
 hos.val <- getvar('hos_Value',F,T)
 comp.val <- getvar('RHINOCORT_AQUA_VAL|CLARITYNE_VAL.sales|NEW_XISIMIN_VAL.sales|NASONEX_VAL.sales',F)
 comp.validx <- lm(comp.val~mdum)$residual
-bcn.val <- getvar('BECONASE')
-plot.mt(getvar('NEW_XISIMIN_VAL',F))
+
+tcm.val <- mc(rowSums(raw[,match(grep('Val.sku',getvar('Tcm'),value=T),colnames(raw))]))
+tcm.val <- tcm.val - predict(lm(tcm.val~mdum+cdum))
+rnct.val <- apply(raw[,match(grep('Val.sku',getvar('Rhinocort'),value=T),colnames(raw))],1,sum)
+rnct.vol <- apply(raw[,match(grep('Pack.sku',getvar('Rhinocort'),value=T),colnames(raw))],1,sum)
+rnct.avp <- rnct.val / rnct.vol
+clarit.val <- mc(getvar('CLARITYNE_VAL.sales',F,T))
+nasonex.val <- mc(getvar('NASONEX_VAL.sales',F,T))
+newxisimin.val <- mc(getvar('NEW_XISIMIN_VAL.sales',F,T))
+
+rnct.val <- raw[,match(grep('Val.sku',getvar('Rhinocort'),value=T),colnames(raw))]
+rnct.wd <- raw[,match(grep('Wd.sku',getvar('Rhinocort'),value=T),colnames(raw))]
+rnct.val2 <- rnct.val[,2]
 
 #atl
 flx.tv <- ret(getvar('GRP.tv',F,T),0.4)
@@ -116,6 +129,10 @@ flx.semimp2 <- ret(getvar('Impressions.sem',F,T)*y2,0.3)
 flx.semimp3 <- ret(getvar('Impressions.sem',F,T)*y3,0.3)
 
 flx.digital <- ret(getvar('Liulanliang.digital',F,T),0.3)
+flx.digital1 <- ret(getvar('Liulanliang.digital',F,T)*y1,0.3)
+flx.digital2 <- ret(getvar('Liulanliang.digital',F,T)*y2,0.3)
+flx.digital3 <- ret(getvar('Liulanliang.digital',F,T)*y3,0.3)
+
 flx.social <- ret(getvar('Read.social',F,T),0.3)
 
 #btl
@@ -134,40 +151,39 @@ flx.rmd_store <- ret(getvar('mianxiangdianyuan',F,T) +
 
 # reprocessing
 
+cheat1 <- rep(0,810)
+cheat1[rep(1:30,27)%in%c(1,2,6)] <- -1/3
+cheat1[rep(1:30,27)==4] <- 1
+
 flx.vol2 <- flx.vol / hh
-cheat1 <- rep(1:30,27) %in% 16:17
-cheat2 <- rep(1:30,27) %in% c(13:15)
 holdout <-   cbind(
-  flx.tv = flx.tv1  * 5.169e-07 * 1.315773
-    + flx.tv2  * (5.169e-07 * 1.315773 - 9.633781e-08)
-    + flx.tv3  * (5.169e-07 * 1.315773 - 4.303923e-08)
-  ,
-  flx.otv = flx.otv1 * 6.462e-07 * 0.4674315
-    + flx.otv2 * 6.462e-07 * 0.4674315 + ((flx.otv2)^(1/3)) * 4.620639e-07
-    + flx.otv3 * 6.462e-07 * 0.4674315 * 0.95
-  ,
-  flx.totv = flx.totv * 4.204e-06 * 0.4674315,
-  flx.digital = flx.digital * 8.177e-14 * 3.066865,
-  flx.sem = flx.semimp1 * 3.24e-09 * 0.1614686
-    + flx.semimp2 * (3.24e-09 * 0.1614686 + 0.792977e-10)
-    + flx.semimp3 * (3.24e-09 * 0.1614686 - 0.740626e-10)
-  ,
-  flx.social = flx.social * 2.093e-10 * 0.1243447,
-  flx.app = flx.app  *  1.102e-07,
-  flx.posm = flx.posm * 1.370e-07 * 0.15,
-  flx.rmd = flx.rmd * 2.869e-08,
-  flx.edu = flx.edu * 1.679e-07 * 0.1239381,
-  # cheat1 = cheat1 * 0.0001814190,
-  # cheat2 = cheat2 * -0.0001814190 *54/81,
-  flx.wd = flx.wd * 0.0016429148
+  intercept = rep(0,810)
+  , flx.tv = flx.tv1  * 5.169e-07 * 1.315773
+  + flx.tv2  * (5.169e-07 * 1.315773 - 9.633781e-08)
+  + flx.tv3  * (5.169e-07 * 1.315773 - 4.303923e-08)
+  , flx.otv = flx.otv1 * 6.462e-07 * 0.4674315
+  + flx.otv2 * 6.462e-07 * 0.4674315 + ((flx.otv2)^(1/3)) * 4.620639e-07
+  + flx.otv3 * 6.462e-07 * 0.4674315 * 0.95
+  , flx.totv = flx.totv * 4.204e-06 * 0.4674315
+  , flx.digital = flx.digital1 * 2.507776e-13
+  + flx.digital2 * 1.91645e-13
+  + flx.digital3 * 1.408429e-13
+  , flx.sem = flx.semimp1 * 3.24e-09 * 0.1614686
+  + flx.semimp2 * (3.24e-09 * 0.1614686 + 0.792977e-10)
+  + flx.semimp3 * (3.24e-09 * 0.1614686 - 0.740626e-10)
+  , flx.social = flx.social * 2.093e-10 * 0.1243447
+  , flx.app = flx.app  *  1.102e-07
+  , flx.posm = flx.posm * 1.370e-07 * 0.15
+  , flx.rmd = flx.rmd * 2.869e-08
+  , flx.edu = flx.edu * 1.679e-07 * 0.1239381
+  , competitor = cheat1*-2.335675e-04 + rnct.val2*-2.630674e-07
+  , flx.nd = flx.nd*7.751972e-04
 )
 flx.vol3 <- flx.vol2 - rowSums(holdout)
 
 # Model
-
 xlm <- lm(flx.vol3 ~ -1
-          # + cdum + mdum
-          + paste0(cdum,mdum)
+          + paste(cdum,mdum)
 )
 tail(coef(summary(xlm)))
 
@@ -187,11 +203,15 @@ sum(y.pred[1:12])/sum(y.pred[13:24])
 
 # Calc
 colSums(holdout*hh)/sum(y.pred)
-check(flx.tv  * 5.169e-07 * 1.315773 * hh,flx.vol)
+check(cheat1*-2.335675e-04*hh,flx.vol)
+check(rnct.val2*-2.630674e-07*hh,flx.vol)
+check((flx.tv1  * 5.169e-07 * 1.315773
+       + flx.tv2  * (5.169e-07 * 1.315773 - 9.633781e-08)
+       + flx.tv3  * (5.169e-07 * 1.315773 - 4.303923e-08)) * hh,flx.vol)
 check(flx.otv * 6.462e-07 * 0.4674315 * hh,flx.vol)
 check(flx.totv * 4.204e-06 * 0.4674315 * hh,flx.vol)
 check(flx.semimp * 3.24e-09 * hh,flx.vol)
-check(flx.digital * 8.177e-14 * hh,flx.vol)
+check(sqrt(flx.digital) * 2.4177e-9 * 1.7 * hh,flx.vol)
 check(flx.app  *  1.102e-07 * hh,flx.vol)
 check(flx.rmd_csm * 9.562e-08 * hh,flx.vol)
 check(flx.rmd_store * 1.740e-07 * hh,flx.vol)
@@ -200,6 +220,7 @@ check(flx.rmd * 2.869e-08 * hh,flx.vol)
 check(flx.social * 2.093e-10 * hh, flx.vol)
 check(flx.edu * 1.679e-07 * hh, flx.vol)
 check(cheat1 * 0.0001814190 * hh, flx.vol)
+check(newxisimin.val*-3.446557e-05*hh,flx.vol)
 
 # Validate
 
@@ -208,19 +229,26 @@ check(cheat1 * 0.0001814190 * hh, flx.vol)
 #############################
 
 decomp <- cbind(
-  flx.tv = flx.tv  * 5.169e-07 * 1.315773,
-  flx.otv = flx.otv * 6.462e-07 * 0.4674315,
-  flx.totv = flx.totv * 4.204e-06 * 0.4674315,
-  flx.digital = flx.digital * 8.177e-14 * 3.066865,
-  flx.sem = flx.semimp * 3.24e-09 * 0.1614686,
-  flx.social = flx.social * 2.093e-10 * 0.1243447,
-  flx.app = flx.app  *  1.102e-07,
-  flx.posm = flx.posm * 1.370e-07 * 0.15,
-  flx.rmd = flx.rmd * 2.869e-08,
-  flx.edu = flx.edu * 1.679e-07 * 0.1239381,
-  cheat = cheat1 * 0.0001814190 + cheat2 * -0.0001814190 *54/81
-  +y2*-2.671445e-05+y3*-1.217385e-04,
-  flx.wd = flx.wd * 0.0016429148
+  flx.tv = flx.tv1  * 5.169e-07 * 1.315773
+  + flx.tv2  * (5.169e-07 * 1.315773 - 9.633781e-08)
+  + flx.tv3  * (5.169e-07 * 1.315773 - 4.303923e-08)
+  , flx.otv = flx.otv1 * 6.462e-07 * 0.4674315
+  + flx.otv2 * 6.462e-07 * 0.4674315 + ((flx.otv2)^(1/3)) * 4.620639e-07
+  + flx.otv3 * 6.462e-07 * 0.4674315 * 0.95
+  , flx.totv = flx.totv * 4.204e-06 * 0.4674315
+  , flx.digital = flx.digital1 * 2.507776e-13
+  + flx.digital2 * 1.91645e-13
+  + flx.digital3 * 1.408429e-13
+  , flx.sem = flx.semimp1 * 3.24e-09 * 0.1614686
+  + flx.semimp2 * (3.24e-09 * 0.1614686 + 0.792977e-10)
+  + flx.semimp3 * (3.24e-09 * 0.1614686 - 0.740626e-10)
+  , flx.social = flx.social * 2.093e-10 * 0.1243447
+  , flx.app = flx.app  *  1.102e-07
+  , flx.posm = flx.posm * 1.370e-07 * 0.15
+  , flx.rmd = flx.rmd * 2.869e-08
+  , flx.edu = flx.edu * 1.679e-07 * 0.1239381
+  , competitor = cheat1*-2.335675e-04 + rnct.val2*-2.630674e-07
+  , flx.nd = flx.nd*7.751972e-04
 ) * hh
 decomp <- apply(decomp,2,mt)
 y.res <- mt(flx.vol) - rowSums(decomp)
@@ -233,11 +261,11 @@ rownames(decomp) <- unique(raw$Month)
 plot.model(decomp$actual,decomp$predict,min(decomp$predict)*0.5)
 
 decomp <- rbind(decomp,
-  apply(decomp,2,function(x){
-    out1 <- tapply(x,rep(1:3,each=12)[1:30],sum)
-    out2 <- tapply(x,c(rep(0,6),rep(4:5,each=12)),sum)
-    c(out1,out2[-1])
-  })
+                apply(decomp,2,function(x){
+                  out1 <- tapply(x,rep(1:3,each=12)[1:30],sum)
+                  out2 <- tapply(x,c(rep(0,6),rep(4:5,each=12)),sum)
+                  c(out1,out2[-1])
+                })
 )
 ############################
 # Output
