@@ -1,7 +1,8 @@
 
 rm(list=ls())
-setwd('/Users/wenrurumon/Downloads')
-raw <- openxlsx::read.xlsx('mmix_flx.xlsx',1)[,-1]
+setwd('/Users/wenrurumon/Desktop/Fenbid_Filxonase/model')
+# raw <- openxlsx::read.xlsx('mmix_flx.xlsx',1)[,-1]
+raw <- as.data.frame(data.table::fread('mmix_flx_withsku.csv'))[,-1]
 
 #############################
 # Function
@@ -82,7 +83,9 @@ hh <- rep(tapply(cat.val,raw$City,mean),each=30)
 mdum <- paste0('M',rep(rep(1:12,length=30),27))
 cdum <- raw$City
 ydum <- do.call(rbind,strsplit(raw$Month,'/'))[,1]
-y1 <- ydum=='2016'
+y1 <- (ydum=='2016')
+y2 <- (ydum=='2017')
+y3 <- (ydum=='2018')
 hos.val <- getvar('hos_Value',F,T)
 comp.val <- getvar('RHINOCORT_AQUA_VAL|CLARITYNE_VAL.sales|NEW_XISIMIN_VAL.sales|NASONEX_VAL.sales',F)
 comp.validx <- lm(comp.val~mdum)$residual
@@ -91,10 +94,27 @@ plot.mt(getvar('NEW_XISIMIN_VAL',F))
 
 #atl
 flx.tv <- ret(getvar('GRP.tv',F,T),0.4)
+flx.tv1 <- ret(getvar('GRP.tv',F,T)*y1,0.4)
+flx.tv2 <- ret(getvar('GRP.tv',F,T)*y2,0.4)
+flx.tv3 <- ret(getvar('GRP.tv',F,T)*y3,0.4)
+
 flx.otv <- ret(getvar('GRP.otv',F,T),0.4)
+flx.otv1 <- ret(getvar('GRP.otv',F,T)*y1,0.4)
+flx.otv2 <- ret(getvar('GRP.otv',F,T)*y2,0.4)
+flx.otv3 <- ret(getvar('GRP.otv',F,T)*y3,0.4)
+
 flx.totv <- ret(getvar('Mobile_iGRP.targetotv|PC_iGRP.targetotv',F,T),0.3)
+
 flx.sem <- ret(getvar('Clicks.sem',F,T),0.3)
+flx.sem1 <- ret(getvar('Clicks.sem',F,T)*y1,0.3)
+flx.sem2 <- ret(getvar('Clicks.sem',F,T)*y2,0.3)
+flx.sem3 <- ret(getvar('Clicks.sem',F,T)*y3,0.3)
+
 flx.semimp <- ret(getvar('Impressions.sem',F,T),0.3)
+flx.semimp1 <- ret(getvar('Impressions.sem',F,T)*y1,0.3)
+flx.semimp2 <- ret(getvar('Impressions.sem',F,T)*y2,0.3)
+flx.semimp3 <- ret(getvar('Impressions.sem',F,T)*y3,0.3)
+
 flx.digital <- ret(getvar('Liulanliang.digital',F,T),0.3)
 flx.social <- ret(getvar('Read.social',F,T),0.3)
 
@@ -118,28 +138,36 @@ flx.vol2 <- flx.vol / hh
 cheat1 <- rep(1:30,27) %in% 16:17
 cheat2 <- rep(1:30,27) %in% c(13:15)
 holdout <-   cbind(
-  flx.tv = flx.tv  * 5.169e-07 * 1.315773,
-  flx.otv = flx.otv * 6.462e-07 * 0.4674315,
+  flx.tv = flx.tv1  * 5.169e-07 * 1.315773
+    + flx.tv2  * (5.169e-07 * 1.315773 - 9.633781e-08)
+    + flx.tv3  * (5.169e-07 * 1.315773 - 4.303923e-08)
+  ,
+  flx.otv = flx.otv1 * 6.462e-07 * 0.4674315
+    + flx.otv2 * 6.462e-07 * 0.4674315 + ((flx.otv2)^(1/3)) * 4.620639e-07
+    + flx.otv3 * 6.462e-07 * 0.4674315 * 0.95
+  ,
   flx.totv = flx.totv * 4.204e-06 * 0.4674315,
   flx.digital = flx.digital * 8.177e-14 * 3.066865,
-  flx.sem = flx.semimp * 3.24e-09 * 0.1614686,
+  flx.sem = flx.semimp1 * 3.24e-09 * 0.1614686
+    + flx.semimp2 * (3.24e-09 * 0.1614686 + 0.792977e-10)
+    + flx.semimp3 * (3.24e-09 * 0.1614686 - 0.740626e-10)
+  ,
   flx.social = flx.social * 2.093e-10 * 0.1243447,
   flx.app = flx.app  *  1.102e-07,
   flx.posm = flx.posm * 1.370e-07 * 0.15,
   flx.rmd = flx.rmd * 2.869e-08,
   flx.edu = flx.edu * 1.679e-07 * 0.1239381,
-  cheat1 = cheat1 * 0.0001814190,
-  cheat2 = cheat2 * -0.0001814190 *54/81,
+  # cheat1 = cheat1 * 0.0001814190,
+  # cheat2 = cheat2 * -0.0001814190 *54/81,
   flx.wd = flx.wd * 0.0016429148
 )
 flx.vol3 <- flx.vol2 - rowSums(holdout)
 
 # Model
 
-xlm <- lm(flx.vol3 ~ -1 
+xlm <- lm(flx.vol3 ~ -1
           # + cdum + mdum
           + paste0(cdum,mdum)
-          # + flx.wd 
 )
 tail(coef(summary(xlm)))
 
@@ -151,6 +179,11 @@ plot.model(
 )
 summary(abs(y.pred/y.raw-1))
 summary(lm(y.raw~-1+y.pred))$r.square
+
+sum(y.raw[19:30])/sum(y.raw[7:18])
+sum(y.pred[19:30])/sum(y.pred[7:18])
+sum(y.raw[1:12])/sum(y.raw[13:24])
+sum(y.pred[1:12])/sum(y.pred[13:24])
 
 # Calc
 colSums(holdout*hh)/sum(y.pred)
@@ -185,7 +218,8 @@ decomp <- cbind(
   flx.posm = flx.posm * 1.370e-07 * 0.15,
   flx.rmd = flx.rmd * 2.869e-08,
   flx.edu = flx.edu * 1.679e-07 * 0.1239381,
-  cheat = cheat1 * 0.0001814190 + cheat2 * -0.0001814190 *54/81,
+  cheat = cheat1 * 0.0001814190 + cheat2 * -0.0001814190 *54/81
+  +y2*-2.671445e-05+y3*-1.217385e-04,
   flx.wd = flx.wd * 0.0016429148
 ) * hh
 decomp <- apply(decomp,2,mt)
@@ -194,8 +228,19 @@ y.season <- predict(lm(y.res ~ paste(rep(1:12,length=30))-1))
 decomp <- cbind(decomp,season = y.season)
 plot.model(mt(flx.vol),rowSums(decomp),min(mt(flx.vol)))
 
-apply(decomp,2,function(x){
-  out1 <- tapply(x,rep(1:3,each=12)[1:30],sum)
-  out2 <- tapply(x,c(rep(0,6),rep(4:5,each=12)),sum)
-  c(out1,out2[-1])
-})
+decomp <- data.frame(decomp,predict=rowSums(decomp),actual=mt(flx.vol),value=mt(flx.val))
+rownames(decomp) <- unique(raw$Month)
+plot.model(decomp$actual,decomp$predict,min(decomp$predict)*0.5)
+
+decomp <- rbind(decomp,
+  apply(decomp,2,function(x){
+    out1 <- tapply(x,rep(1:3,each=12)[1:30],sum)
+    out2 <- tapply(x,c(rep(0,6),rep(4:5,each=12)),sum)
+    c(out1,out2[-1])
+  })
+)
+############################
+# Output
+############################
+
+# write.csv(t(decomp),'decomp_flx.csv')
