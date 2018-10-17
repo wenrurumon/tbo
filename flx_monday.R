@@ -140,7 +140,12 @@ flx.app <- (getvar('saomaliang.app',F,T))
 flx.edu <- ret(getvar('shijirenshu.edu',F,T),0.5)
 flx.posm <- ret(getvar('posm',F,T),0.5)
 flx.rmd <- ret(getvar('hejiyujidanpinshuliang.rmd',F,T),0.5)
-flx.rmd_csm <- ret(getvar('mianxiangxiaofeizhe',F,T),0.3)
+
+flx.rmd <- ret(getvar('hejiyujidanpinshuliang.rmd',F,T),0.5)
+flx.rmd2 <- ret(getvar('hejiyujidanpinshuliang.rmd',F,T)*y2,0.5)
+flx.rmd3 <- ret(getvar('hejiyujidanpinshuliang.rmd',F,T)*y3,0.5)
+
+flx.rmd_csm <- ret(getvar('mianxiangxiaofeizhe',F,T),0.5)
 flx.rmd_store <- ret(getvar('mianxiangdianyuan',F,T) +
                        getvar('mianxiangmendian',F,T) +
                        getvar('xinxingqiqiu',F,T),0.5)
@@ -151,6 +156,7 @@ flx.rmd_store <- ret(getvar('mianxiangdianyuan',F,T) +
 
 # reprocessing
 
+flx.rmd1 <- rep(1:30,27) %in% (10:13)
 cheat1 <- rep(0,810)
 cheat1[rep(1:30,27)%in%c(1,2,6)] <- -1/3
 cheat1[rep(1:30,27)==4] <- 1
@@ -173,8 +179,8 @@ holdout <-   cbind(
   + flx.semimp3 * (3.24e-09 * 0.1614686 - 0.740626e-10)
   , flx.social = flx.social * 2.093e-10 * 0.1243447
   , flx.app = flx.app  *  1.102e-07
-  , flx.posm = flx.posm * 1.370e-07 * 0.15
-  , flx.rmd = flx.rmd * 2.869e-08
+  , flx.posm = y1*1.4008665e-05 + flx.posm * 1.370e-07 * 0.15 * 0.58
+  , flx.rmd = flx.rmd1*3.546273e-05 + flx.rmd2 * 2.869e-08 + flx.rmd3 * 1.115862e-09
   , flx.edu = flx.edu * 1.679e-07 * 0.1239381
   , competitor = cheat1*-2.335675e-04 + rnct.val2*-2.630674e-07
   , flx.nd = flx.nd*7.751972e-04
@@ -184,6 +190,7 @@ flx.vol3 <- flx.vol2 - rowSums(holdout)
 # Model
 xlm <- lm(flx.vol3 ~ -1
           + paste(cdum,mdum)
+          # + y1
 )
 tail(coef(summary(xlm)))
 
@@ -203,6 +210,9 @@ sum(y.pred[1:12])/sum(y.pred[13:24])
 
 # Calc
 colSums(holdout*hh)/sum(y.pred)
+
+check(y1*1.4008665e-05*hh,flx.vol)
+check(flx.rmd1*3.546273e-05*hh,flx.vol)
 check(cheat1*-2.335675e-04*hh,flx.vol)
 check(rnct.val2*-2.630674e-07*hh,flx.vol)
 check((flx.tv1  * 5.169e-07 * 1.315773
@@ -244,8 +254,8 @@ decomp <- cbind(
   + flx.semimp3 * (3.24e-09 * 0.1614686 - 0.740626e-10)
   , flx.social = flx.social * 2.093e-10 * 0.1243447
   , flx.app = flx.app  *  1.102e-07
-  , flx.posm = flx.posm * 1.370e-07 * 0.15
-  , flx.rmd = flx.rmd * 2.869e-08
+  , flx.posm = y1*1.4008665e-05 + flx.posm * 1.370e-07 * 0.15 * 0.58
+  , flx.rmd = flx.rmd1*3.546273e-05 + flx.rmd2 * 2.869e-08 + flx.rmd3 * 1.115862e-09
   , flx.edu = flx.edu * 1.679e-07 * 0.1239381
   , competitor = cheat1*-2.335675e-04 + rnct.val2*-2.630674e-07
   , flx.nd = flx.nd*7.751972e-04
@@ -271,4 +281,4 @@ decomp <- rbind(decomp,
 # Output
 ############################
 
-# write.csv(t(decomp),'decomp_flx.csv')
+write.csv(t(decomp),'decomp_flx.csv')
