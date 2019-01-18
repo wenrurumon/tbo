@@ -184,7 +184,7 @@ list(round(emisspr_ori,2),transpro,startpro)
 #按天给出状态与分数
 data2day <- data.table(select(fdata,pid,hours,orate,trate),t=rep(0:100,length=nrow(data2.x)),data2.x
 ) %>% filter(orate>0) %>% mutate(
-  day = floor(hours / 24 / 100*t + 1)
+  day = floor(hours / 6 / 100*t)
 ) %>% group_by(pid,orate,day) %>% summarise(
   trate = max(trate),
   CS1=mean(CS1),CS2=mean(CS2),CS3=mean(CS3),CS4=mean(CS4),CS5=mean(CS5),CS6=mean(CS6),
@@ -205,7 +205,7 @@ summary2day <- rbind(as.data.frame(summary2day),colSums(summary2day)) %>% mutate
 
 #不同状态下的多源指标
 data2day <- as.data.table(data2day) %>% mutate(obs = paste(CS1,CS2,CS3,CS4,CS5,CS6,CS7,CS8,CS9,CS10,CS11,CS12),
-                                lpid=lag(pid,default='0'), lrate=lag(trate,default=0), check=(lpid==pid))
+                                               lpid=lag(pid,default='0'), lrate=lag(trate,default=0), check=(lpid==pid))
 tag.obs <- unique(data2day$obs)
 data2day <- data2day %>% mutate(obs = match(obs,tag.obs))
 
@@ -237,10 +237,6 @@ transpro <- do.call(cbind,lapply(0:2,function(i){
   filter(prob.hid2hid,lrate==i)$n
 })); transpro
 transpro <- transpro / rowSums(transpro)
-transpro[2:3] <- transpro[2:3] / sum(transpro[2:3]) * (1-transpro[1])
-transpro[6] <- 1 - transpro[3] - transpro[9] 
-transpro[8] <- 1 - transpro[9] - transpro[7]
-transpro[5] <- 1 - rowSums(transpro)[2] + transpro[5]
 
 emisspr <- do.call(rbind,lapply(0:2,function(i){
   x <- filter(prob.hid2obs,trate==i)
@@ -275,16 +271,12 @@ state2 <- paste(unique(data2day2$trate))
 Symbols2 <- paste(unique(data2day2$obs))
 startprob2 <- prob.orihid2$n
 
-transpro <- do.call(cbind,lapply(0:2,function(i){
+transpro2 <- do.call(cbind,lapply(0:2,function(i){
   filter(prob.hid2hid2,lrate==i)$n
-})); transpro
-transpro <- transpro / rowSums(transpro)
-transpro[2:3] <- transpro[2:3] / sum(transpro[2:3]) * (1-transpro[1])
-transpro[6] <- 1 - transpro[3] - transpro[9] 
-transpro[8] <- 1 - transpro[9] - transpro[7]
-transpro[5] <- 1 - rowSums(transpro)[2] + transpro[5]
+})); transpro2
+transpro2 <- transpro2 / rowSums(transpro2)
 
-emisspr <- do.call(rbind,lapply(0:2,function(i){
+emisspr2 <- do.call(rbind,lapply(0:2,function(i){
   x <- filter(prob.hid2obs,trate==i)
   x <- x$n[match(Symbols,x$obs)]
   x[is.na(x)] <- 0
@@ -294,6 +286,59 @@ emisspr <- do.call(rbind,lapply(0:2,function(i){
 ########################
 
 out <- data.table((as.data.table(data2day) %>% select(-obs,-lpid,-lrate,-check,-trate)),ori_rate=data2day$trate,exp_rate=itv_hmm$V1)
-write.csv(out,'daily_final.out',row.names=F)
+write.csv(out,'daily_final.out2',row.names=F)
+write.csv(prob.hid2hid,'prob_hid2hid.out2',row.names=F)
+write.csv(prob.hid2hid2,'prob_hid2hid2.out2',row.names=F)
+write.csv(prob.hid2obs,'prob_hid2obs.out2',row.names=F)
+write.csv(prob.hid2obs2,'prob_hid2obs2.out2',row.names=F)
+write.csv(prob.orihid,'prob_orihid.out2',row.names=F)
+write.csv(prob.orihid2,'prob_orihid2.out2',row.names=F)
 
 out <- lapply(dir(pattern='out'),fread)
+names(out) <- dir(pattern='out')
+write.csv()
+
+#########################
+
+plot.ts(x <- filter(out,pid=='04770BDB6414A34743244C6D20A43A70')$exp_rate)
+ret <- function(x,ret=0.3){
+  x.ori <- x
+  for(i in 2:length(x)){
+    x[i] <- x[i-1] * ret + x[i]
+  }
+  x
+}
+ret2 <- function(x,ret2=0.3){
+  x1 <- x
+  x2 <- ret(x[length(x):1],ret2)[length(x):1]+ret(x,ret2)
+  # x2 * max(x1)/max(x2)
+  x2 <- x2 * sum(x1)/sum(x2)
+  sel <- rowMeans(cbind(lag(x1),x1,lead(x1)),na.rm=T)==x1
+  x2[sel] <- x1[sel]
+  x2
+}
+
+i <- 0
+pred_area <- t(sapply(pids,function(pidi){
+  print(i<<-i+1)
+  x <- filter(out,pid==pidi)$exp_rate
+  x <- (x==0)*0.505 + (x==1)*0.261 + (x==2) * 0.114
+  x.hour <- floor(filter(base,pid==pidi)$hours*100)
+  x.rate <- filter(base,pid==pidi)$orate
+  f <- splinefun(1:length(x),ret2(x))
+  f <- f((1:x.hour)*length(x)/x.hour)
+  # plot((1:x.hour)*length(x)/x.hour,f,type='l',col=2)
+  # lines(1:length(x),ret2(x))
+  c(orate=x.rate,hour=x.hour/100,area=sum(f))
+}))
+pred_area <- data.table(pid=pids,pred_area)
+
+head(base)
+base_area <- base %>% filter(orate==0) %>% select(pid,orate,hour=hours) %>% mutate(
+  orate = 0, hour = floor(hour*100)/100, area = hour * 0.505*100
+)
+
+area <- rbind(as.data.table(base_area),as.data.table(pred_area)) %>% mutate(
+  avg_area = area/hour
+)
+w
