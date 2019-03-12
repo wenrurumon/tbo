@@ -179,12 +179,12 @@ for(i in mi){
   par(mfrow=c(1,2))
   x <- test[rownames(test)%in%filter(base,province==i&orate==1)$pid,]
   plot(rep(0:1,length=100),col=0,main=paste(i,'中度, n =',nrow(x)))
-  for(j in 1:nrow(x)){
+  for(j in 1:min(nrow(x),100)){
     lines(x[j,])
   }
   x <- test[rownames(test)%in%filter(base,province==i&orate==2)$pid,]
   plot(rep(0:1,length=100),col=0,main=paste(i,'重度, n =',nrow(x)))
-  for(j in 1:nrow(x)){
+  for(j in 1:min(nrow(x),100)){
     lines(x[j,])
   }
 }
