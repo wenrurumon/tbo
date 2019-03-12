@@ -170,13 +170,21 @@ test <- lapply(area2_2hour,function(i){
   i
 })
 test <- do.call(rbind,test)
-test1 <- test[pids %in% filter(base,orate==1)$pid,]
-plot.ts(rep(0:1,length=100),col=0)
-# for(i in 1:nrow(test1)){lines(test1[i,],col=1+i/10)}
-for(i in 1:1000){lines(test1[i,],col=1)}
+rownames(test) <- pids
+jxk <- select(jxk,pid=patient_id,province)
+base <- merge(base,jxk,by='pid') %>% mutate(main=paste(province,orate))
+mi <- unique(base$province)
 
-test2 <- test[pids %in% filter(base,orate==2)$pid,]
-plot.ts(rep(0:1,length=100),col=0)
-# for(i in 1:nrow(test2)){lines(test2[i,],col=1+i/10)}
-for(i in 1:1000){lines(test2[i,],col=1)}
-
+for(i in mi){
+  par(mfrow=c(1,2))
+  x <- test[rownames(test)%in%filter(base,province==i&orate==1)$pid,]
+  plot(rep(0:1,length=100),col=0,main=paste(i,'中度, n =',nrow(x)))
+  for(j in 1:nrow(x)){
+    lines(x[j,])
+  }
+  x <- test[rownames(test)%in%filter(base,province==i&orate==2)$pid,]
+  plot(rep(0:1,length=100),col=0,main=paste(i,'重度, n =',nrow(x)))
+  for(j in 1:nrow(x)){
+    lines(x[j,])
+  }
+}
