@@ -1,0 +1,16 @@
+﻿e::d
+r::f
+t::j
+y::k
+i::r
+o::l
+d::e
+f::t
+h::y
+j::n
+k::i
+l::o
+`;::h
+n::p
+p::;
+!q::Suspend

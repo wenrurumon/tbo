@@ -1,0 +1,2 @@
+﻿$CapsLock::BackSpace
+$BackSpace::CapsLock
