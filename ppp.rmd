@@ -1,0 +1,501 @@
+---
+title: "Category Landscape and Pack Price Architecture"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+---
+
+**Background**
+
+The solution of Category Landscape and Pack Price Architecure is a lightweight data analytical framework provide insight about the macro environment, competitive relationship and opportunities optimization on product portfolio from shallow to deep.
+
+**Key Business Questions**
+
+What is the general pricing strategy for the category?
+
+What are the key add-value concepts?
+
+What are the opportunities for price optimization?
+
+**Category Landscape**
+
+1.1 Category Overview
+
+1.2 Subcategory Overview
+
+1.3 Big players in the market
+
+1.4 Key add-value concepts
+
+**Brand Landscape**
+
+2.1 Product Portfolio
+
+2.2 Centrum Product Portfolio
+
+**Deep Dive Anaysis**
+
+3.1 Product Valuation Analysis
+
+3.2 Neiborhoods Price Ladder Analysis
+
+---
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#Module
+rm(list=ls())
+library(MASS)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(sqldf)
+library(grid)
+library(lubridate)
+library(scales)
+library(magrittr)
+library(tidyr)
+options(warn=-1)
+vplayout <- function(x,y){viewport(layout.pos.row = x, layout.pos.col = y)} 
+#Processing
+setwd('/Users/wenrurumon/Documents/gsk/CT2020')
+raw <- openxlsx::read.xlsx("subcat4ppa_sampling.xlsx",sheet='subcat4ppa_sampling')
+colnames(raw) <- c('category','pfc','sku','audit','year','month','drugclass','l1','subcat','manutype','manu','brand','drugtype','consumertype','usage','drugform','package','du','val','pack','avpack','avdu','nd','wd','ond','owd','bnd','bwd','bond','bowd','brandcn','subbrandcn','skucn','manucn')
+raw <- raw %>% mutate(sku=gsub('Powders/Granules','Powders_Granules',sku)) %>% mutate(sku=gsub('GRAN U/DOSE','GRAN U_DOSE',sku)) %>% mutate(sku=gsub('FISH OIL/FOLIC ACI','FISH OIL_FOLIC ACI',sku))
+sku <- do.call(rbind,strsplit(raw$sku,'/')) %>% as.data.frame
+colnames(sku) <- c('brand','drugtype','consumertype','usage','drugform','package','manu','subcat')
+sku$package <- sapply(strsplit(paste(sku$package),'[0-9]'),function(x){x[1]})
+sku$package <- gsub(' x','',sku$package)
+sku$package <- gsub(' ','_',substr(sku$package,1,nchar(sku$package)-1))
+raw <- data.table(select(raw,manucn,brandcn,sku,year,month,drugclass) %>% mutate(month=as.Date(paste(year,month,1,sep='-'))),sku,select(raw,du,val,pack,wd,bwd)) %>% mutate(val=as.numeric(val)/1000,du=as.numeric(du)/10000,pack=as.numeric(pack)/10000,price=val/pack,packsize=round(du/pack,0)) %>% filter(!is.na(packsize)) %>% arrange(sku,month) %>% filter(year<2020) %>% mutate(year=paste(year))
+raw$package <- gsub('COMB.PACK','CPACK',raw$package)
+brandmap <- sapply(unique(raw$brandcn),function(i){
+  x <- (unlist(strsplit(paste(raw$brand),' ')[raw$brandcn==i]))
+  x2 <- names(which(table(x)==max(table(x))))
+  paste(unique(x[x%in%x2]),collapse=' ')
+})
+brandmap <- data.frame(brandcn=names(brandmap),brande=paste(brandmap))
+raw <- merge(brandmap,raw,key='brand') %>% mutate(brande=ifelse(is.na(brandcn),paste(brand),paste(brande)))
+
+temp <- raw %>% group_by(brand=brande,year) %>% filter(year=='2019') %>% summarise(value=sum(val),volume=sum(pack))
+temp <- temp %>% mutate(value=value/sum(temp$value),volume=volume/sum(temp$volume)) %>% arrange(desc(value))
+temp$valprop <- cumsum(temp$value)
+temp <- temp %>% mutate(value=value/sum(temp$value),volume=volume/sum(temp$volume)) %>% arrange(desc(volume))
+temp$volprop <- cumsum(temp$volume)
+temp <- filter(temp,volprop<=min(filter(temp,volprop>0.8)$volprop)|valprop<=min(filter(temp,valprop>0.8)$valprop))
+player <- temp$brand
+raw <- raw %>% mutate(player=ifelse(brande%in%player,brande,'OTHERS'))
+raw$player <- factor(raw$player,c(player[length(player):1],'OTHERS'))
+raw <- raw %>% filter(year!='2020')
+```
+
+**Overview on the size of the category**
+
+- Sales Value Stable
+- Sales Volume Decreasing
+- #SKU stable
+- Category Premiumization and Trade Up
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+temp <- raw %>% group_by(year,month) %>% summarise(val=sum(val),pack=sum(pack),sku=n_distinct(sku))
+grid.newpage();pushViewport(viewport(layout = grid.layout(5,3))) 
+p <- ggplot() + 
+  geom_line(data=temp,aes(x=month,y=val,colour='Value'),size=1) +
+  geom_line(data=temp,aes(x=month,y=rescale(pack,range(val)),colour='Volume'),size=1) + 
+  scale_y_continuous(breaks=pretty_breaks(5),sec.axis = sec_axis( ~rescale(.,range(temp$pack)),name='Volume (MMPack)')) + 
+  labs(x='',y='Value (MMRMB)',fill='Measurement',title='Category Trend',colour='Measurement') + guides(colour=F) 
+print(p,vp=vplayout(1:3,1:3))
+p <- ggplot(data=temp,aes(x=year,y=val,fill='value')) + geom_bar(stat="identity", width=0.5) + labs(x='',y='',title='Value (MMRMB)') + guides(fill=F)
+print(p, vp = vplayout(4:5,1))
+p <- ggplot(data=temp,aes(x=year,y=pack,fill=factor(2,1:3))) + geom_bar(stat="identity", width=0.5,fill="#4CD2CC") + labs(x='',y='',title='Volume (MMPack)') + guides(fill=F) 
+print(p, vp = vplayout(4:5,2))
+temp <- raw %>% group_by(year,sku) %>% summarise(wd=mean(wd)) %>% group_by(year) %>% summarise(n=n(),sku=sum(wd)/100)
+p <- ggplot(data=temp,aes(x=year,y=sku)) + geom_bar(stat="identity",width=0.5,fill='purple') + labs(x='',y='',title='W.SKU on Shelf') + guides(fill=F) 
+print(p, vp = vplayout(4:5,3))
+```
+
+---
+
+- Category Premiumization and Trade Up in another vision
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+temp <- raw %>% group_by(brande,sku,year) %>% summarise(val=sum(val),pack=sum(pack)) %>% mutate(price=val/pack) %>% arrange(year,price)
+for(i in 2:nrow(temp)){
+  if(temp$year[i]==temp$year[i-1]){
+    temp$val[i] <- temp$val[i] + temp$val[i-1]
+    temp$pack[i] <- temp$pack[i] + temp$pack[i-1]
+  }
+}
+ggplot(data=temp,aes(pack,val,colour=year)) + geom_line(size=1) + labs(x='Volume (MMPack)',y='Value (MMRMB)',title='Category Trend | Value vs. Volume')
+```
+
+---
+
+**Identify the price tier**
+
+- The price of mid tier products is set around 80 to 140 RMB per pack. 
+- Business size of the low tier and mid tier products contribute almost 90% of the category sales volume and 75% of the value.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+temp <- raw %>% filter(year=='2019') %>% group_by(brande,sku,year) %>% summarise(val=sum(val),pack=sum(pack),wd=mean(wd)) %>% mutate(price=val/pack) %>% arrange((price))
+temp$val <- cumsum(temp$val)/sum(temp$val)
+temp$pack <- cumsum(temp$pack)/sum(temp$pack)
+temp$nsku <- cumsum(temp$wd)/sum(temp$wd)
+ggplot(data=temp) + geom_line(aes(x=price,y=val*100,colour='Accumulated Value%'),size=1) + geom_line(aes(x=price,y=pack*100,colour='Accumulated Volume%'),size=1) + geom_line(aes(x=price,y=nsku*100,colour='Accumulated W.SKU%'),size=1) + labs(x='Price',y='%',colour='',title = 'Bussiness Contribution cross Price Tier') + theme(legend.position='top') 
+```
+
+---
+
+**Overview of the market segment**
+
+- General products own the largest consumer group while consumers of the products targeting on Pregnant and Female have greater purchasing power.
+- Increasing segment size of Coated Tablets and Health Food
+- Increasing segment price of Pregnant and Geriatric
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+temp1 <- temp <- raw %>% mutate(packsize=paste(drugform,packsize)) %>% select(subcat,drugtype,consumertype,drugform,package,packsize,val,du,pack,year,player) 
+colnames(temp1)[1] <- 'subcategory'
+temp <- lapply(1:5,function(i){
+  x <- data.frame(scope=names(temp)[i],feature=temp[,i],brand=temp$player,year=temp$year,value=temp$val,pack=temp$pack) %>%
+    mutate(scope=paste(scope),year=paste(year)) %>% group_by(scope,feature,brand,year) %>% 
+    summarise(val=sum(value),pack=sum(pack)) %>% as.data.table})
+temp <- do.call(rbind,temp) 
+temp <- merge(temp,temp %>% group_by(scope,year) %>% summarise(tvalue=sum(val),tpack=sum(pack)),by=c('scope','year')) %>% mutate(val=ifelse(tvalue==0,0,val/tvalue),pack=ifelse(tpack==0,0,pack/tpack))
+temp <- temp %>% group_by(scope,year,brand='Category',feature) %>% summarise(value=sum(val),pack=sum(pack))
+temp$scope <- ifelse(temp$scope=='subcat','subcategory',temp$scope)
+temp <- as.data.frame(temp)
+temp <- melt(temp,id=c('scope','year','brand','feature'))
+temp <- temp %>% group_by(scope,feature,year,variable,bucket=paste(year,toupper(variable))) %>% summarise(value=sum(value)) %>% arrange(variable,year,scope,feature)
+for(i in c(5,3,2,1)){
+grid.newpage();pushViewport(viewport(layout = grid.layout(7,1))) 
+p <- ggplot(data=temp %>% filter(scope==unique(temp$scope)[i],variable=='value'),aes(x=year,y=value*100,fill=feature)) + geom_bar(position='stack',stat='identity')  + theme(legend.position='top') + labs(x='',y='Value%',fill='',title=paste('VALUE SHARE BY',toupper(unique(temp$scope)[i]))) + coord_flip()+ guides(fill=FALSE)
+print(p,vp=vplayout(1:2,1))
+p <- ggplot(data=temp %>% filter(scope==unique(temp$scope)[i],variable=='pack'),aes(x=year,y=value*100,fill=feature)) + geom_bar(position='stack',stat='identity') + theme(legend.position='top') + labs(x='',y='Volume%',fill='',title=paste('VOLUME SHARE BY',toupper(unique(temp$scope)[i]))) + coord_flip() + guides(fill=FALSE)
+print(p,vp=vplayout(3:4,1))
+x <- merge(temp %>% filter(scope==unique(temp$scope)[i]),melt(raw %>% group_by(year) %>% summarise(value=sum(val),pack=sum(pack))),by=c('year','variable'),key=c('year','variable')) %>% mutate(value=value.x*value.y) %>% select(year,scope,feature,variable,value)
+x <- merge(x %>% filter(variable=='value'),x %>% filter(variable=='pack'),by=c('year','feature','scope')) %>% mutate(price=value.x/value.y)
+p <- ggplot(data=x,aes(x=as.Date(paste0(year,'-1-1')),y=price,colour=feature)) + geom_line(size=1) + facet_grid(.~feature) + labs(x='Year',y='Price',colour="") + theme(legend.position='bottom') + theme(strip.text.x = element_text(size=0, angle=0)) + scale_x_date(date_breaks = '1 year',date_labels = '%y') 
+print(p,vp=vplayout(5:7,1))
+}
+```
+
+---
+
+**Players in the Market in sales**
+
+- 7 big players contributes over 80% of the category sales. 
+- Centrum is leading the contribution at 26% of followed by Elevit at 19%.  
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+temp <- raw %>% group_by(year,month,player) %>% summarise(value=sum(val),pack=sum(pack)) %>% arrange(player,month)
+grid.newpage();pushViewport(viewport(layout = grid.layout(2,6))) 
+p <- ggplot(data=temp,aes(x=month,y=value,fill=player)) + geom_bar(position="stack", stat="identity") + labs(x='Month',y='Value (MMRMB)',title='Sales Trend in Value | Big Player in the Market') + guides(fill=FALSE)
+print(p, vp = vplayout(1,1:6))
+p <- ggplot(data=temp,aes(x=year,y=value,fill=player)) + geom_bar(position="stack", stat="identity",width=0.5) + labs(x='Year',y='Value (MMRMB)',fill='') + theme(legend.position='bottom')
+print(p, vp = vplayout(2,2:5))
+grid.newpage();pushViewport(viewport(layout = grid.layout(2,6))) 
+p <- ggplot(data=temp,aes(x=month,y=pack,fill=player)) + geom_bar(position="stack", stat="identity") + labs(x='Month',y='Volume (MMPack)',title='Sales Trend in Volume | Big Player in the Market') + guides(fill=FALSE)
+print(p, vp = vplayout(1,1:6))
+p <- ggplot(data=temp,aes(x=year,y=pack,fill=player)) + geom_bar(position="stack", stat="identity",width=0.5) + labs(x='Year',y='Volume (MMPack)') + labs(x='Year',y='Volume (MMPack)',fill='') + theme(legend.position='bottom')
+print(p, vp = vplayout(2,2:5))
+```
+
+---
+
+**Players in the Market in share**
+
+- Contribution cross the big players keeps stable in the previous three years.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+temp <- raw %>% group_by(year,month,player) %>% summarise(value=sum(val),pack=sum(pack)) %>% arrange(player,month)
+temp <- merge(temp,temp %>% group_by(month) %>% summarise(tval=sum(value),tpack=sum(pack)),by='month') %>% mutate(mvalue=value/tval,mpack=pack/tpack)
+temp <- merge(temp,temp %>% group_by(year) %>% summarise(tval=sum(value),tpack=sum(pack)),by='year') %>% mutate(yvalue=value/tval.y,ypack=pack/tpack.y)
+
+grid.newpage();pushViewport(viewport(layout = grid.layout(2,6))) 
+p <- ggplot(data=temp,aes(x=month,y=mvalue,fill=player)) + geom_bar(position="stack", stat="identity") + labs(x='Month',y='Value%',title='Sales Trend in Value | Big Player in the Market') + guides(fill=FALSE)
+print(p, vp = vplayout(1,1:6))
+p <- ggplot(data=temp,aes(x=year,y=yvalue,fill=player)) + geom_bar(position="stack", stat="identity",width=0.5) + labs(x='Year',y='Value%',fill='') + theme(legend.position='bottom')
+print(p, vp = vplayout(2,2:5))
+grid.newpage();pushViewport(viewport(layout = grid.layout(2,6))) 
+p <- ggplot(data=temp,aes(x=month,y=mpack,fill=player)) + geom_bar(position="stack", stat="identity") + labs(x='Month',y='Volume%',title='Sales Trend in Volume | Big Player in the Market') + guides(fill=FALSE)
+print(p, vp = vplayout(1,1:6))
+p <- ggplot(data=temp,aes(x=year,y=ypack,fill=player)) + geom_bar(position="stack", stat="identity",width=0.5) + labs(x='Year',y='Volume%') + labs(x='Year',y='Volume%',fill='') + theme(legend.position='bottom')
+print(p, vp = vplayout(2,2:5))
+```
+
+---
+
+**Brand Awareness**
+
+- Centrum owns the greatest brand awareness around all the competitor followed by Elevit, Multiv&Minera and 21 super vita.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+temp <- raw %>% group_by(year,brande,brand=player) %>% summarise(value=sum(val),pack=sum(pack),wd=mean(as.numeric(bwd),na.rm=T)) %>% filter(year=='2019')
+ggplot(data=temp,aes(x=wd,y=value,colour=brand)) + geom_point() + geom_point(size=3) + labs(x='Distribution (%)',y='Value (MMRMB)',colour='Brand',title='Sales Point in Value per Distribution | Total Category by Brand') + geom_text(data=filter(temp,brand!='OTHERS'),aes(x=wd,y=value+20,label=brand),check_overlap = TRUE,size=4) + lims(x=c(0,100))
+ggplot(data=temp,aes(x=wd,y=pack,colour=brand)) + geom_point() + geom_point(size=3) + labs(x='Distribution (%)',y='Volume (MMPack)',colour='Brand',title='Sales Point in Volume per Distribution | Total Category by Brand') + geom_text(data=filter(temp,brand!='OTHERS'),aes(x=wd,y=pack+0.3,label=brand),check_overlap = F,size=4) + lims(x=c(0,100))
+```
+
+---
+
+**Character of the players**
+
+- Centrum contributes 88% of the elderly market is relatively with few competitors
+- 42% of the Coated Tablets market is dominated by Centrum
+- 39% of the general drugform is occupied by Centrum, and 35% of western medicine
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+temp <- raw %>% mutate(packsize=paste(drugform,packsize)) %>% select(subcat,drugtype,consumertype,drugform,package,packsize,val,du,pack,year,player) 
+temp <- lapply(1:4,function(i){
+  x <- data.frame(scope=names(temp)[i],feature=temp[,i],brand=temp$player,year=temp$year,value=temp$val) %>%
+    mutate(scope=paste(scope),year=paste(year)) %>% group_by(scope,feature,brand,year) %>% 
+    summarise(val=sum(value)) %>% as.data.table})
+temp <- do.call(rbind,temp)
+temp <- merge(temp,temp %>% group_by(year,feature) %>% summarise(tval=sum(val)),by=c('feature','year')) %>% mutate(prop=val/tval) %>% filter(year=='2019'&brand!='OTHERS')
+ggplot(temp,aes(toupper(brand),paste(toupper(scope),toupper(feature),sep=": "))) + geom_tile(aes(fill=prop),colour='white') + scale_fill_gradient(low='white',high='blue') + labs(x='',y='',fill='',title='Brand Contribution cross Segment') + theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.5)) 
+
+```
+
+
+---
+
+**Price Position in the market cross brand**
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+temp <- raw %>% group_by(year,brande,brand=player,sku) %>% summarise(value=sum(val),pack=sum(pack),wd=mean(wd),price=value/pack) %>% filter(year=='2019') %>% arrange((price))
+temp$value <- cumsum(temp$value)/sum(temp$value)
+temp$pack <- cumsum(temp$pack)/sum(temp$pack)
+ggplot(data=temp,aes(x=price,y=value,colour=brand)) + geom_point(size=ifelse(temp$brand=='OTHERS',0.5,3)) + labs(x='Price',y='Value %',colour='Brand',title='Pricing Position in the Market')
+```
+
+---
+
+**Price Ladder in the market cross brand**
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+temp <- raw %>% filter(year=='2019') %>% group_by(sku,brand,player,subcat,drugtype,consumertype,drugform,package,packsize) %>% summarise(
+  value=sum(val),pack=sum(pack),price=value/pack
+) %>% arrange(desc(price))
+temp$key <- factor(temp$sku,temp$sku)
+ggplot() + 
+  geom_point(data=temp,aes(x=as.numeric(key),y=price,colour=player)) +
+  geom_bar(data=temp,aes(x=as.numeric(key),y=rescale(pack,c(0,max(temp$price))),fill=player),position='stack',stat='identity',alpha=ifelse(temp$player=='CENTRUM',0.8,0.3)) +
+  scale_y_continuous(breaks=pretty_breaks(5),sec.axis = sec_axis( ~rescale(.,c(0,max(temp$pack))),name='Volume (MMPack)')) +
+  theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.8)) + labs(x='',y='Pack Price',fill='Brand',title='Price Ladder | Total Category') + guides(colour=F)
+
+temp <- raw %>% filter(year=='2019') %>% filter(player!='OTHERS') %>% group_by(sku,brand,player,subcat,drugtype,consumertype,drugform,package,packsize) %>% summarise(
+  value=sum(val),pack=sum(pack),price=value/pack
+) %>% arrange(desc(price))
+temp$key <- factor(temp$sku,temp$sku)
+ggplot() + 
+  geom_point(data=temp,aes(x=as.numeric(key),y=price,colour=player)) +
+  geom_bar(data=temp,aes(x=as.numeric(key),y=rescale(pack,c(0,max(temp$price))),fill=player),position='stack',stat='identity',alpha=ifelse(temp$player=='CENTRUM',0.8,0.3)) +
+  scale_y_continuous(breaks=pretty_breaks(5),sec.axis = sec_axis( ~rescale(.,c(0,max(temp$pack))),name='Volume (MMPack)')) +
+  theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.8)) + labs(x='',y='Pack Price',fill='Brand',title='Price Ladder | Big Players') + guides(colour=F)
+```
+
+---
+
+**Overview of Centrum Business**
+
+- Flat sales volume with incrasing sales value YOY for Centrum.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+temp <- raw %>% filter(player=='CENTRUM') %>% group_by(year,month) %>% summarise(val=sum(val),pack=sum(pack),sku=n_distinct(sku))
+grid.newpage();pushViewport(viewport(layout = grid.layout(5,3))) 
+p <- ggplot() + 
+  geom_line(data=temp,aes(x=month,y=val,colour='Value'),size=1) +
+  geom_line(data=temp,aes(x=month,y=rescale(pack,range(val)),colour='Volume'),size=1) + 
+  scale_y_continuous(breaks=pretty_breaks(5),sec.axis = sec_axis( ~rescale(.,range(temp$pack)),name='Volume (MMPack)')) + 
+  labs(x='',y='Value (MMRMB)',fill='Measurement',title='Sales Trend | Total Centrum',colour='Measurement') + guides(colour=F)
+print(p,vp=vplayout(1:3,1:3))
+p <- ggplot(data=temp,aes(x=year,y=val,fill='value')) + geom_bar(stat="identity", width=0.5) + labs(x='',y='',title='Value (MMRMB)') + guides(fill=F) 
+print(p, vp = vplayout(4:5,1))
+p <- ggplot(data=temp,aes(x=year,y=pack,fill=factor(2,1:3))) + geom_bar(stat="identity", width=0.5,fill="#4CD2CC") + labs(x='',y='',title='Volume (MMPack)') + guides(fill=F) 
+print(p, vp = vplayout(4:5,2))
+temp <- raw %>% group_by(year,sku) %>% summarise(wd=mean(wd)) %>% group_by(year) %>% summarise(n=n(),sku=sum(wd)/100)
+p <- ggplot(data=temp,aes(x=year,y=sku)) + geom_bar(stat="identity",width=0.5,fill='purple') + labs(x='',y='',title='#W.SKU on Shelf') + guides(fill=F) 
+print(p, vp = vplayout(4:5,3))
+```
+
+---
+
+**Price Ladder of Centrum**
+
+- Reasonable price ladder for each subbrand
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+temp <- raw %>% filter(player!='OTHERS'&year=='2019') %>% group_by(sku,brand,subcat,player,drugtype,consumertype,drugform,package,packsize) %>% summarise(
+  value=sum(val),pack=sum(pack),price=value/pack,wd=mean(wd)
+) %>% arrange(desc(price))
+temp$key <- factor(paste0(1:nrow(temp),'.',paste(temp$brand,temp$packsize,sep=' / ')),paste0(1:nrow(temp),'.',paste(temp$brand,temp$packsize,sep=' / ')))
+ggplot() + 
+  geom_point(data=temp,aes(x=key,y=price,colour=brand)) +
+  geom_bar(data=temp,aes(x=key,y=rescale(pack,c(0,max(temp$price))),fill=player),position='stack',stat='identity',alpha=ifelse(temp$player=='CENTRUM',0.8,0.3)) +
+  scale_y_continuous(breaks=pretty_breaks(5),sec.axis = sec_axis( ~rescale(.,c(0,max(temp$pack))),name='Volume (MMPack)')) +
+  theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.8)) + labs(x='',y='Pack Price',fill='Subbrand',title='Price Ladder | Big Players') + guides(colour=F)
+
+temp <- raw %>% filter(player!='OTHERS'&year=='2019') %>% group_by(sku,brand,subcat,player,drugtype,consumertype,drugform,package,packsize) %>% summarise(
+  value=sum(val),pack=sum(pack),price=value/pack,wd=mean(wd)
+) %>% arrange(desc(price))
+temp$key <- factor(paste0(1:nrow(temp),'.',paste(temp$brand,temp$packsize,sep=' / ')),paste0(1:nrow(temp),'.',paste(temp$brand,temp$packsize,sep=' / ')))
+ggplot() + 
+  geom_point(data=temp,aes(x=key,y=price,colour=brand)) +
+  geom_bar(data=temp,aes(x=key,y=rescale(pack/wd,c(0,max(temp$price))),fill=player),position='stack',stat='identity',alpha=ifelse(temp$player=='CENTRUM',0.8,0.3)) +
+  scale_y_continuous(breaks=pretty_breaks(5),sec.axis = sec_axis( ~rescale(.,c(0,max(temp$pack/temp$wd))),name='Volume per WD')) +
+  theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.8)) + labs(x='',y='Pack Price',fill='Subbrand',title='Price Ladder | Big Players') + guides(colour=F)
+
+
+temp <- raw %>% filter(brande=='CENTRUM'&year=='2019') %>% group_by(sku,brand,subcat,player,drugtype,consumertype,drugform,package,packsize) %>% summarise(
+  value=sum(val),pack=sum(pack),price=value/pack,wd=mean(wd)
+) %>% arrange(brand,desc(price))
+temp$key <- factor(paste(temp$brand,temp$packsize,sep=' / '),paste(temp$brand,temp$packsize,sep=' / '))
+ggplot() + 
+  geom_point(data=temp,aes(x=key,y=price,colour=brand)) +
+  geom_bar(data=temp,aes(x=key,y=rescale(pack,c(0,max(temp$price))),fill=brand),position='stack',stat='identity',alpha=ifelse(temp$player=='CENTRUM',0.8,0.3)) +
+  scale_y_continuous(breaks=pretty_breaks(5),sec.axis = sec_axis( ~rescale(.,c(0,max(temp$pack))),name='Volume (MMPack)')) +
+  theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.8)) + labs(x='',y='Pack Price',fill='Subbrand',title='Price Ladder | Centrum') + guides(colour=F)
+
+temp <- raw %>% filter(player!='OTHERS'&year=='2019') %>% group_by(sku,brand,subcat,player,drugtype,consumertype,drugform,package,packsize) %>% summarise(
+  value=sum(val),pack=sum(pack),price=value/pack,wd=mean(wd)
+) %>% arrange(brand,desc(price))
+temp$key <- factor(paste0(1:nrow(temp),'.',paste(temp$brand,temp$packsize,sep=' / ')),paste0(1:nrow(temp),'.',paste(temp$brand,temp$packsize,sep=' / ')))
+ggplot() + 
+  geom_point(data=temp,aes(x=key,y=price,colour=brand)) +
+  geom_bar(data=temp,aes(x=key,y=rescale(pack,c(0,max(temp$price))),fill=player),position='stack',stat='identity',alpha=ifelse(temp$player=='CENTRUM',0.8,0.3)) +
+  scale_y_continuous(breaks=pretty_breaks(5),sec.axis = sec_axis( ~rescale(.,c(0,max(temp$pack))),name='Volume (MMPack)')) +
+  theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.8)) + labs(x='',y='Pack Price',fill='Subbrand',title='Price Ladder | Big Players') + guides(colour=F)
+
+```
+
+######################################################
+######################################################
+
+**Evaluation of the key value-added content**
+**Gap between product value and current price**
+
+- step1 identify price tier: price tier = key content + brand awareness
+- step2 set recommended price: recommended price = price tier + competition + brand awareness + key content
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#Data Processing
+temp <- raw %>% filter(year=='2019') %>% filter(player!='OTHERS') %>% group_by(brande,brand,sku,drugtype,consumertype,drugform,package,subcat,player,packsize) %>% summarise(
+  value=sum(val),pack=sum(pack),wd=mean(wd),price=value/pack
+)
+X <- temp %>% select(brande,drugtype,consumertype,drugform,package,packsize,subcat,value,pack,wd,price)
+X <- merge(X,X %>% group_by(package) %>% summarise(minpack=min(packsize)),by='package') %>% mutate(packidx=packsize/minpack)
+X$skuid <- 1:nrow(X)
+X.key <- select(X,brande,subcat,drugtype,consumertype,drugform,package,packidx)
+keys <- apply(X.key%>%select(-packidx),2,function(x){unique(x)})
+Xs <- lapply(1:length(keys),function(i){
+  rlt <- outer(paste(X.key[,i]),paste(keys[[i]]),'==')
+  colnames(rlt) <- paste(keys[[i]])
+  cbind(rlt+0,packidx=log(X.key$packidx))
+})
+X <- X %>% mutate(tier=ifelse(price<=80,1,0)) %>%
+  mutate(tier=ifelse(price<=140&tier==0,2,tier)) %>% 
+  mutate(tier=ifelse(price<=280&tier==0,3,tier)) %>% 
+  mutate(tier=ifelse(price>280&tier==0,4,tier)) 
+
+#Modeling
+model2 <- lapply(Xs,function(datax){(lm(log(X$price)~datax-1))})
+model2 <- unlist(lapply(model2,coef))/length(model2)
+model2 <- tapply(model2,gsub('datax','',names(model2)),sum)
+Xs <- do.call(cbind,Xs)
+Xs <- Xs[,match(names(model2),colnames(Xs))]
+b0 <- sqrt(model2)
+f <- function(b){
+  b[b<0] <- 0;
+  mean((log(X$price) - Xs %*% (b)^2)^2)/mean((log(X$price) - Xs %*% (b0)^2)^2)
+}
+b0 <- optim(b0,f,control=list(maxit=20000))$par
+f <- function(b){
+  b[b<0] <- 0;
+  mean(((log(X$price) - Xs %*% (b)^2)^2)*X$pack/X$wd)/
+    mean(((log(X$price) - Xs %*% (b0)^2)^2)*X$pack/X$wd)
+}
+b <- optim(b0,f,control=list(maxit=20000))$par
+X$expprice <- exp(Xs %*% (b^2))
+X <- X %>% mutate(exptier=ifelse(expprice<=80,1,0)) %>%
+  mutate(exptier=ifelse(expprice<=140&exptier==0,2,exptier)) %>% 
+  mutate(exptier=ifelse(expprice<=280&exptier==0,3,exptier)) %>% 
+  mutate(exptier=ifelse(expprice>280&exptier==0,4,exptier)) 
+
+mean(X$tier == X$exptier)
+sum((X$tier==X$exptier)*X$pack/X$wd)/sum(X$pack/X$wd)
+X <- filter(X,exptier!=tier&brande=='CENTRUM') %>% as.data.frame %>% select(sku,brande,brand,price,expprice,tier,exptier,skuid,value,packsize) %>% arrange(brand,packsize)
+# X <- filter(X,abs(expprice-price)>30&brande=='CENTRUM') %>% as.data.frame %>% select(sku,brande,brand,price,expprice,tier,exptier,skuid,value) %>% arrange(desc(value))
+
+#Resulting
+
+X$key <- factor(paste(X$brand,X$packsize),unique(paste(X$brand,X$packsize)))
+ggplot() + theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.8)) +
+  geom_point(data=X,aes(key,price,colour='Current Price'),size=3) +
+  geom_point(data=X,aes(key,expprice,colour='Recommended Price'),size=3) + 
+  geom_bar(data=X,aes(key,rescale(value,range(c(0,price,expprice)))),alpha=0.2,position='stack',stat='identity',fill='purple') +
+  scale_y_continuous(breaks=pretty_breaks(5),sec.axis = sec_axis( ~rescale(.,c(0,max(X$value))),name='Value (MMRMB)')) +
+  labs(x='',y='Pack Price',colour='Legend')
+ 
+```
+
+---
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+temp <- raw %>% filter(year=='2019') %>% group_by(sku,player,brand,subcat,drugtype,consumertype,drugform,package,packsize,) %>% summarise(wd=mean(as.numeric(wd)),value=sum(val),pack=sum(pack),price=value/pack,ppd=pack/wd*100) %>% mutate(key=1)
+tempi <- (filter(temp,brand=='SILVER CENTRUM MUL') %>% select(subcat,drugtype,consumertype,drugform))[,-1:-4] %>% unique %>% mutate(key=1)
+temp <- merge(temp,tempi,by='key') %>% mutate(
+  subcat=ifelse(subcat.x==subcat.y,'',paste(subcat.x)),
+  drugtype=ifelse(drugtype.x==drugtype.y,'',paste(drugtype.x)),
+  consumertype=ifelse(consumertype.x==consumertype.y,'',paste(consumertype.x)),
+  drugform=ifelse(drugform.x==drugform.y,'',paste(drugform.x)),
+  match=(subcat=='')+(drugtype=='')+(drugform=='')+(consumertype=='')
+) %>% filter(match>=3)
+temp$key <- apply(select(temp,brand,subcat,drugtype,consumertype,drugform,packsize),1,function(x){paste(x[x!=''],collapse='/')})
+temp <- temp %>% arrange(desc(price)) %>% filter(player!='OTHERS')
+temp$key <- paste(1:nrow(temp),temp$key,sep='. ')
+temp$key <- factor(temp$key,unique(temp$key))
+
+ggplot() + theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.8)) + geom_point(data=temp,aes(x=key,y=price,colour=brand)) + geom_bar(data=temp,aes(x=key,y=rescale(ppd,c(0,max(temp$price))),fill=brand),position='stack',stat='identity',alpha=ifelse(temp$brand=='SILVER CENTRUM MUL',0.8,0.3)) + scale_y_continuous(breaks=pretty_breaks(5),sec.axis = sec_axis( ~rescale(.,c(0,max(temp$ppd))),name='MMPack / WDist')) + labs(x='',y='Pack Price',fill='Brand',title='Neighborhood Price Ladder') + guides(colour=F)
+
+```
+
+---
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+temp <- raw %>% filter(year=='2019') %>% group_by(sku,player,brand,subcat,drugtype,consumertype,drugform,package,packsize,) %>% summarise(wd=mean(as.numeric(wd)),value=sum(val),pack=sum(pack),price=value/pack,ppd=pack/wd*100) %>% mutate(key=1)
+tempi <- (filter(temp,brand=='SILVER CENTRUM MUL') %>% select(subcat,drugtype,consumertype,drugform))[,-1:-4] %>% unique %>% mutate(key=1)
+temp <- merge(temp,tempi,by='key') %>% mutate(
+  subcat=ifelse(subcat.x==subcat.y,'',paste(subcat.x)),
+  drugtype=ifelse(drugtype.x==drugtype.y,'',paste(drugtype.x)),
+  consumertype=ifelse(consumertype.x==consumertype.y,'',paste(consumertype.x)),
+  drugform=ifelse(drugform.x==drugform.y,'',paste(drugform.x)),
+  match=(subcat=='')+(drugtype=='')+(drugform=='')+(consumertype=='')
+) %>% filter(match>=3)
+temp$key <- apply(select(temp,brand,subcat,drugtype,consumertype,drugform,packsize),1,function(x){paste(x[x!=''],collapse='/')})
+temp <- temp %>% arrange(brand,desc(price)) %>% filter(player!='OTHERS')
+temp$key <- paste(1:nrow(temp),temp$key,sep='. ')
+temp$key <- factor(temp$key,unique(temp$key))
+
+ggplot() + theme(axis.text.x = element_text(angle=90, hjust=1, vjust=.8)) + geom_point(data=temp,aes(x=key,y=price,colour=brand)) + geom_bar(data=temp,aes(x=key,y=rescale(ppd,c(0,max(temp$price))),fill=brand),position='stack',stat='identity',alpha=ifelse(temp$brand=='SILVER CENTRUM MVI',0.8,0.3)) + scale_y_continuous(breaks=pretty_breaks(5),sec.axis = sec_axis( ~rescale(.,c(0,max(temp$ppd))),name='MMPack / WDist')) + labs(x='',y='Pack Price',fill='Brand',title='Neighborhood Price Ladder') + guides(colour=F)
+
+```
+
+---
+
+**Overview of the market segment**
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+temp <- raw %>% filter(year=='2019') %>% group_by(sku,player,brand,subcat,drugtype,consumertype,drugform,package,packsize) %>% summarise(wd=mean(as.numeric(wd)),value=sum(val),pack=sum(pack),price=value/pack)
+temp <- merge(temp,temp %>% group_by(drugform) %>% summarise(packidx=min(packsize)),by='drugform') %>% mutate(packidx=packsize/packidx)
+
+
+# score1 平均一个牌子有多少销售额
+# score 牌子有多少销售额的标准差
+
+```
+
