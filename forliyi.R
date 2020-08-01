@@ -7,8 +7,6 @@ library(pROC)
 setwd('/Users/wenrurumon/Documents/posdoc/liyi')
 raw <- readRDS(('baseline.impute.rds'))
 
-
-
 ############################################################################################################
 ############################################################################################################
 
@@ -91,22 +89,26 @@ raw.model <- apply(X,2,function(x){
   modelx <- MASS::lda(y~.,data=datax)
   rltx <- predict(modelx)$posterior[,2]  
   list(model=modelx,rlt=rltx)
+  # list(model=modelx,rlt=x)
 })
 raw2 <- sapply(1:ncol(X),function(i){raw.model[[i]]$rlt})
+colnames(raw2) <- colnames(raw)[-1]
 raw2 <- do.call(cbind,lapply(1:ncol(raw2),function(i){
-  apply(raw2,2,function(x){x*raw2[,i]})
+  do.call(cbind,lapply(i:ncol(raw2),function(j){
+    x <- cbind(raw2[,i]*raw2[,j])
+    colnames(x) <- paste(colnames(raw2)[i],colnames(raw2)[j],sep='*')
+    x
+  }))
 }))
-
-# raw2 <- raw2[,rank(-apply(raw2,2,function(x){mean(Y==(x>=0.5))}))/ncol(raw2)<=0.6]
 raw2 <- cbind(Y,raw2)
 test <- function(i){
   set.seed(i) 
-  sel <- sample(1:nrow(raw),0.5*nrow(raw))
+  sel <- sample(1:nrow(raw),0.7*nrow(raw))
   train <- raw2[sel,]; test <- raw2[-sel,]
   dtrain <- xgb.DMatrix(train[,-1], label = train[,1])
   dtest <- xgb.DMatrix(test[,-1], label = test[,1])
   watchlist <- list(train = dtrain, eval = dtest)
-  param <- list(max_depth = 2, eta = 0.5, verbose = 0, nthread = 2,
+  param <- list(max_depth = 2, eta = 1, verbose = 0, nthread = 2,
                 objective = "binary:logistic", eval_metric = "auc")
   bst <- xgb.train(param, dtrain, nrounds = 2, watchlist)
   roc(test[,1],as.numeric(predict(bst,newdata=dtest)))$auc
@@ -116,32 +118,27 @@ hist(test)
 summary(test)
 test1 <- test
 
-raw2 <- sapply(1:ncol(X),function(i){raw.model[[i]]$rlt})
-raw2 <- do.call(cbind,lapply(1:ncol(raw2),function(i){
-  apply(raw2,2,function(x){x*raw2[,i]})
-}))
-raw2 <- raw2[,rank(-apply(raw2,2,function(x){mean(Y==(x>=0.5))}))/ncol(raw2)<=0.2]
-dim(raw2)
-raw2 <- cbind(Y,raw2)
-test <- function(i){
-  set.seed(i*10) 
-  sel <- sample(1:nrow(raw),0.6*nrow(raw))
-  train <- raw2[sel,]; test <- raw2[-sel,]
-  dtrain <- xgb.DMatrix(train[,-1], label = train[,1])
-  dtest <- xgb.DMatrix(test[,-1], label = test[,1])
+#############
+
+xgb <- function(raw,sel1=1:nrow(raw),sel2=sel1){
+  train <- raw[sel1,]; test <- raw[sel2,]
+  dtrain <- xgb.DMatrix(train[,-1,drop=F], label = train[,1])
+  dtest <- xgb.DMatrix(test[,-1,drop=F], label = test[,1])
   watchlist <- list(train = dtrain, eval = dtest)
-  param <- list(max_depth = 2, eta = 0.4, verbose = 0, nthread = 2,
+  param <- list(max_depth = 2, eta = 1, verbose = 0, nthread = 2,
                 objective = "binary:logistic", eval_metric = "auc")
   bst <- xgb.train(param, dtrain, nrounds = 2, watchlist)
-  roc(test[,1],as.numeric(predict(bst,newdata=dtest)))$auc
+  list(model=bst,auc=roc(test[,1],as.numeric(predict(bst,newdata=dtest)))$auc)
 }
-test <- sapply(1:100,test)
-hist(test)
-test2 <- test
-summary(test2)
-
-summary(test1)
-summary(test2)
-
-#######
-
+vsel <- sapply(2:ncol(raw2),function(i){
+  sapply(1:100,function(j){
+    set.seed(j);sel <- sample(1:nrow(raw2),0.7*nrow(raw2))
+    xgb(cbind(raw2[,1],raw2[,i]),sel,(1:nrow(raw2))[-sel])$auc
+  })
+})
+raw0 <- cbind(raw2[,1],raw2[,-1][,colMeans(vsel)>quantile(vsel,0.9)])
+test <- sapply(1:1000,function(j){
+  set.seed(j);sel <- sample(1:nrow(raw2),0.7*nrow(raw2))
+  xgb(raw0,sel,(1:nrow(raw2))[-sel])$auc
+})
+summary(test)
