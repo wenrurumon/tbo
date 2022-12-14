@@ -4,13 +4,14 @@ library(dplyr)
 library(xgboost)
 library(ggplot2)
 library(openxlsx)
-setwd('/Users/wenrurumon/Documents/training/1112/rich/20221207')
+setwd('/Users/wenrurumon/Documents/training/1112/rich/20221212')
 
 ####################################
 # Data
 ####################################
 
 (stocklist <- dir())
+stocklist <- stocklist[-grep('CSI',stocklist)]
 raw <- lapply(dir(pattern='csv'),function(stocki){
   x <- read.csv(stocki)
   x <- x[,sapply(c('时间','开盘','最高','最低','收盘','金额'),function(xi){grep(xi,colnames(x))})]
@@ -34,72 +35,70 @@ goldgo <- function(X){
   raw <- X
   raw$did <- match(raw$date,sort(unique(raw$date)))
   raw <- raw %>% filter(date>='2021-01-01')
-  #Historical Data
-  x0 <- raw %>% select(stock,date,did,open)
-  for (i in 1:10){
-    xi <- raw %>%
-      mutate(did=did+i) %>%
-      select(-stock)
-    colnames(xi)[1:6] <- paste(colnames(xi)[1:6],i,sep='_')
-    x0 <- x0 %>%
-      merge(xi,by=c('did'))
-  }
-  X0 <- x0
-  X <- X0[,!grepl('date_',colnames(X0))]
-  #Profit Data
-  y0 <- raw %>% select(stock,date,did,open)
-  for (i in 1:15){
-    yi <- raw %>%
-      mutate(did=did-i) %>%
-      select(did,date,open)
-    colnames(yi)[-1] <- paste(colnames(yi)[-1],i,sep='_')
-    y0 <- y0 %>%
-      merge(yi,by=c('did'))
-  }
-  Y0 <- y0
-  Y <- Y0[,!grepl('date_',colnames(Y0))]
-  Y <- Y %>%
-    select(did,stock,date) %>%
-    mutate(profit=apply((Y[,-1:-4]),1,function(x){quantile(x,0.8)})/Y[,4])
+  #Predictor
+  x0 <- raw
+  hx <- 10
+  X0 <- t(sapply(hx:nrow(x0),function(i){
+    xi <- x0[1:(hx)+i-hx,]
+    out <- sapply(hx:1,function(j){
+      c(mean(xi$open[1:j]>xi$open[hx]),
+        mean(xi$open[1:j]/xi$open[hx]),
+        mean(xi$high[1:j]>xi$open[hx]),
+        mean(xi$high[1:j]/xi$open[hx]),
+        mean(xi$low[1:j]>xi$open[hx]),
+        mean(xi$low[1:j]/xi$open[hx]),
+        mean(xi$close[1:j]>xi$open[1:j]),
+        mean(xi$close[1:j]/xi$open[1:j]))
+    })
+    c(did=max(xi$did)+1,as.vector(out))
+  }))
+  #Responsor
+  y0 <- raw
+  hy <- 30
+  Y0 <- t(sapply(1:(nrow(y0)-hy),function(i){
+    yi <- y0[i:(i+hy),]
+    c(
+      did=yi$did[1],
+      prop=mean(yi$open[-1]>yi$open[1]),
+      mean=mean(yi$open[-1]/yi$open[1]),
+      prop8=mean(quantile(yi$open[-1],0.8)>yi$open[1]),
+      mean8=mean(quantile(yi$open[-1],0.8)/yi$open[1])
+    )
+  }))
   #Modeling
-  modelfile <- X %>% merge(Y,by=c('did','stock','date'))
+  modelfile <- X0 %>% 
+    merge(Y0,by='did') %>%
+    merge(raw %>% select(did,date))
   train <- list(
-    data = modelfile %>%
-      filter(date<'2022-06-01') %>%
-      select(-did,-date,-stock,-profit,-open) %>%
-      as.matrix,
-    label = modelfile %>%
-      filter(date<'2022-06-01') %>%
-      select(profit) %>%
-      as.matrix
+    data = (modelfile %>%
+              filter(date<'2022-06-01'))[,2:81],
+    label = (modelfile %>%
+               filter(date<'2022-06-01'))[,-1:-81]
   )
   test <- list(
-    data = modelfile %>%
-      filter(date>='2022-06-01') %>%
-      select(-did,-date,-stock,-profit,-open) %>%
-      as.matrix,
-    label = modelfile %>%
-      filter(date>='2022-06-01') %>%
-      select(profit) %>%
-      as.matrix
+    data = (modelfile %>%
+              filter(date>='2022-06-01'))[,2:81],
+    label = (modelfile %>%
+               filter(date>='2022-06-01'))[,-1:-81]
   )
   #Modeling
-  model <- xgboost(data = as.matrix(train$data), label = train$label>1.01,
+  model <- xgboost(data = as.matrix(train$data), label = train$label$mean8>1.1,
                    max.depth = 10, eta = 2, nthread = 2, nrounds = 100,
                    objective = "binary:logistic",verbose=0)
   plot.ts(model$evaluation_log$train_logloss)
-  score <- predict(model,newdata=rbind(train$data,test$data))
+  score <- predict(model,newdata=as.matrix(rbind(train$data,test$data)))
   #Resulting
   rlt <- modelfile %>%
-    select(date,stock,open,profit) %>%
-    mutate(score=score)
+    select(date,prop,mean,prop8,mean8) %>%
+    mutate(score=score,stock=unique(raw$stock)) %>%
+    merge(raw %>% select(date,open))
   rlt
 }
 system.time(decomp <- do.call(rbind,lapply(RAW,goldgo)))
 
 decomp %>% 
   group_by(date>='2022-06-01',stock) %>% 
-  summarise(cor(profit,score)) %>%
+  summarise(cor(mean8,score)) %>%
   as.data.frame
 
 ####################################
@@ -235,12 +234,12 @@ cost <- log %>%
   summarise(cost=sum(cost))
 
 test <- (log %>%
-  filter(date>='2022-06-01') %>%
-  arrange(did,date,stock) %>%
-  merge(price) %>%
-  mutate(profit=sell/buy) %>%
-  group_by(did,date) %>%
-  summarise(profit=sum(p*profit))) %>%
+           filter(date>='2022-06-01') %>%
+           arrange(did,date,stock) %>%
+           merge(price) %>%
+           mutate(profit=sell/buy) %>%
+           group_by(did,date) %>%
+           summarise(profit=sum(p*profit))) %>%
   merge(price %>%
           group_by(did) %>%
           summarise(price=mean(buy)))
@@ -270,62 +269,66 @@ c(threshold=threshold,profit=profit,cost)
 # Prediction
 ####################################
 
-# print(i<<-0)
 goldgo2 <- function(X){
   # print(i<<-i+1)
   #Load Data
   raw <- X
   raw$did <- match(raw$date,sort(unique(raw$date)))
   raw <- raw %>% filter(date>='2021-01-01')
-  #Historical Data
-  x0 <- raw %>% select(stock,date,did,open)
-  for (i in 1:10){
-    xi <- raw %>%
-      mutate(did=did+i) %>%
-      select(-stock)
-    colnames(xi)[1:6] <- paste(colnames(xi)[1:6],i,sep='_')
-    x0 <- x0 %>%
-      merge(xi,by=c('did'))
-  }
-  X0 <- x0
-  X <- X0[,!grepl('date_',colnames(X0))]
-  #Profit Data
-  y0 <- raw %>% select(stock,date,did,open)
-  for (i in 1:15){
-    yi <- raw %>%
-      mutate(did=did-i) %>%
-      select(did,date,open)
-    colnames(yi)[-1] <- paste(colnames(yi)[-1],i,sep='_')
-    y0 <- y0 %>%
-      merge(yi,by=c('did'))
-  }
-  Y0 <- y0
-  Y <- Y0[,!grepl('date_',colnames(Y0))]
-  Y <- Y %>%
-    select(did,stock,date) %>%
-    mutate(profit=apply((Y[,-1:-4]),1,function(x){quantile(x,0.8)})/Y[,4])
+  #Predictor
+  x0 <- raw
+  hx <- 10
+  X0 <- t(sapply(hx:nrow(x0),function(i){
+    xi <- x0[1:(hx)+i-hx,]
+    out <- sapply(hx:1,function(j){
+      c(mean(xi$open[1:j]>xi$open[hx]),
+        mean(xi$open[1:j]/xi$open[hx]),
+        mean(xi$high[1:j]>xi$open[hx]),
+        mean(xi$high[1:j]/xi$open[hx]),
+        mean(xi$low[1:j]>xi$open[hx]),
+        mean(xi$low[1:j]/xi$open[hx]),
+        mean(xi$close[1:j]>xi$open[1:j]),
+        mean(xi$close[1:j]/xi$open[1:j]))
+    })
+    c(did=max(xi$did)+1,as.vector(out))
+  }))
+  #Responsor
+  y0 <- raw
+  hy <- 30
+  Y0 <- t(sapply(1:(nrow(y0)-hy),function(i){
+    yi <- y0[i:(i+hy),]
+    c(
+      did=yi$did[1],
+      prop=mean(yi$open[-1]>yi$open[1]),
+      mean=mean(yi$open[-1]/yi$open[1]),
+      prop8=mean(quantile(yi$open[-1],0.8)>yi$open[1]),
+      mean8=mean(quantile(yi$open[-1],0.8)/yi$open[1])
+    )
+  }))
   #Modeling
-  modelfile <- X %>% merge(Y,by=c('did','stock','date'))
+  modelfile <- X0 %>% 
+    merge(Y0,by='did') %>%
+    merge(raw %>% select(did,date))
   train <- list(
-    data = modelfile %>%
-      select(-did,-date,-stock,-profit,-open) %>%
-      as.matrix,
-    label = modelfile %>%
-      select(profit) %>%
-      as.matrix
+    data = (modelfile)[,2:81],
+    label = (modelfile)[,-1:-81]
   )
+  colnames(train$data) <- paste0('V',1:ncol(train$data))
   #Modeling
-  model <- xgboost(data = as.matrix(train$data), label = train$label>1.01,
+  model <- xgboost(data = as.matrix(train$data), label = train$label$mean8>1.1,
                    max.depth = 10, eta = 2, nthread = 2, nrounds = 100,
                    objective = "binary:logistic",verbose=0)
   plot.ts(model$evaluation_log$train_logloss)
-  score <- predict(model,newdata=rbind(train$data,test$data))
-  pred <- predict(model,newdata=X %>% select(-did,-date,-stock,-open) %>% as.matrix)
-  pred <- cbind(X %>% select(did,stock,date),pred)
+  score <- predict(model,newdata=as.matrix(rbind(train$data,test$data)))
+  pred <- predict(model,newdata=X0[,-1] %>% as.data.frame %>% as.matrix)
+  pred <- cbind(did=X0[,1],pred) %>%
+    merge(raw %>% select(did,date)) %>%
+    mutate(stock=unique(raw$stock))
   #Resulting
   rlt <- modelfile %>%
-    select(date,stock,open,profit) %>%
-    mutate(score=score)
+    select(date,prop,mean,prop8,mean8) %>%
+    mutate(score=score,stock=unique(raw$stock)) %>%
+    merge(raw %>% select(date,open))
   list(train=rlt,predict=pred)
 }
 system.time(decomp2 <- lapply(RAW,goldgo2))
