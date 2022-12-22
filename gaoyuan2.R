@@ -137,9 +137,10 @@ plotnet <- function(x,mode='undirected'){
        edge.width=1)
 }
 fc <- function(x){
-  w<-as.vector(t(x))[t(x)>0]
-  x <- graph_from_adjacency_matrix(x>0,mode='undirected')
-  fc <- membership(fastgreedy.community(x,weight=w))
+  x <- melt(x) %>%
+    dplyr::select(from=1,to=2,weight=3) %>%
+    graph_from_data_frame(directed=F)
+  fc <- membership(fastgreedy.community(simplify(x)))
   fc[] <- match(fc,unique(fc))
   fc
 }
@@ -256,7 +257,7 @@ pc2 <- function(p,main=NULL){
   list(p1,p2,p.net)
 }
 
-fnet <- lapply(1,function(i){
+fnet <- lapply(1:4,function(i){
   print(i)
   phenoi <-phenos
   pc2(phenoi)
